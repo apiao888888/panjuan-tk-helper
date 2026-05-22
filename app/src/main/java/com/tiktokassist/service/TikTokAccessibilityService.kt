@@ -51,6 +51,8 @@ class TikTokAccessibilityService : AccessibilityService() {
     private var navigatedToTarget = false
     // 已处理过的评论用户文本（用于去重，避免重复关注/私信同一人）
     private val processedCommentSignatures = HashSet<String>()
+    // 搜索结果中已处理过的视频卡片 bounds 签名（避免重复点同一个）
+    private val processedSearchVideoSignatures = HashSet<String>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -88,6 +90,7 @@ class TikTokAccessibilityService : AccessibilityService() {
         isPaused = false
         navigatedToTarget = false
         processedCommentSignatures.clear()
+        processedSearchVideoSignatures.clear()
         stats = TaskStats(currentMode = mode, startTime = System.currentTimeMillis())
         logLines.clear()
         addLog("▶ 启动：${mode.displayName}")
@@ -423,8 +426,8 @@ class TikTokAccessibilityService : AccessibilityService() {
 
         // 1. 打开评论区
         if (!openCommentPanel()) {
-            addLog("⚠️ 找不到评论按钮，滑下一条")
-            swipeToNextVideo()
+            addLog("⚠️ 找不到评论按钮，跳到下一个视频")
+            goToNextVideoInTask()
             return true
         }
 
@@ -434,11 +437,105 @@ class TikTokAccessibilityService : AccessibilityService() {
 
         // 3. 关闭评论区
         performGlobalAction(GLOBAL_ACTION_BACK)
-        delay(800)
+        delay(1000)
 
-        // 4. 滑到下一个视频
-        swipeToNextVideo()
+        // 4. 跳到下一个视频
+        goToNextVideoInTask()
         return true
+    }
+
+    /**
+     * 根据 targetSourceType 决定如何切换到下一个视频:
+     * - SEARCH_KEYWORD / USERNAME: BACK 一次回搜索结果页, tap 下一个未处理的视频卡片
+     *   (如果在搜索结果视频流里上滑, 容易跳到作者主页, 而不是切下一条搜索结果)
+     * - CURRENT_VIDEO / VIDEO_URL: 直接上滑切下一条 (主 Feed 行为)
+     */
+    private suspend fun goToNextVideoInTask() {
+        val useSearchResultsBack = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
+            || config.targetSourceType == TargetSourceType.USERNAME
+
+        if (!useSearchResultsBack) {
+            swipeToNextVideo()
+            return
+        }
+
+        // 评论 panel 已关, 当前在视频播放页. 再 BACK 一次回搜索结果页
+        addLog("⬅ 返回搜索结果页")
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        delay(2000)
+
+        // 在搜索结果页选下一个未处理的视频卡片
+        var root = rootInActiveWindow ?: return
+        var next = findNextUnprocessedVideo(root)
+
+        // 找不到 → 向下滑搜索结果页，再找
+        var attempts = 0
+        while (next == null && attempts < 3) {
+            addLog("ℹ️ 当前屏无新视频, 向下滑结果列表")
+            scrollSearchResults()
+            delay(1500)
+            root = rootInActiveWindow ?: return
+            next = findNextUnprocessedVideo(root)
+            attempts++
+        }
+
+        if (next == null) {
+            addLog("⚠️ 找不到下一个搜索结果视频, 重置")
+            processedSearchVideoSignatures.clear()
+            return
+        }
+
+        // 记录已处理 + tap
+        val sig = nodeBoundsSignature(next)
+        processedSearchVideoSignatures.add(sig)
+        addLog("▶ tap 下一个视频")
+        tapNodeCenter(next)
+        delay(3500)
+    }
+
+    /** 用 bounds 给视频卡片打签名 (位置可能因滚动变化, 不完美但够用) */
+    private fun nodeBoundsSignature(node: AccessibilityNodeInfo): String {
+        val r = android.graphics.Rect()
+        node.getBoundsInScreen(r)
+        return "${r.left},${r.top},${r.right},${r.bottom}"
+    }
+
+    /** 找下一个未处理的视频卡片 */
+    private fun findNextUnprocessedVideo(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        collectVideoResultCandidates(root, candidates)
+        // 按 y/x 排序
+        val sorted = candidates.sortedWith(
+            compareBy(
+                { node ->
+                    val r = android.graphics.Rect()
+                    node.getBoundsInScreen(r)
+                    r.top / 200
+                },
+                { node ->
+                    val r = android.graphics.Rect()
+                    node.getBoundsInScreen(r)
+                    r.left
+                }
+            )
+        )
+        return sorted.firstOrNull { !processedSearchVideoSignatures.contains(nodeBoundsSignature(it)) }
+    }
+
+    /** 在搜索结果页向下滑动列表（不是切视频） */
+    private suspend fun scrollSearchResults() {
+        val startY = screenHeight * 0.75f
+        val endY = screenHeight * 0.30f
+        val x = screenWidth * 0.5f
+        val path = android.graphics.Path().apply {
+            moveTo(x, startY)
+            lineTo(x, endY)
+        }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 400))
+            .build()
+        dispatchGesture(gesture, null, null)
+        delay(1200)
     }
 
     /** 根据 targetSourceType 导航到目标。返回是否成功导航。 */
@@ -559,6 +656,8 @@ class TikTokAccessibilityService : AccessibilityService() {
             return false
         }
         addLog("▶ tap 第一个视频")
+        // 记录已处理, 下次 BACK 回搜索结果页时跳过这个卡片
+        processedSearchVideoSignatures.add(nodeBoundsSignature(firstVideo))
         tapNodeCenter(firstVideo)
         delay(3500) // 等视频播放页加载
         addLog("✅ 已进入第一个视频")
@@ -720,24 +819,26 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /**
      * 打开评论面板。
-     * 评论按钮 content-desc：
+     * 评论按钮 content-desc (实测):
      * - 英文版: "Read or add comments. N comments"
-     * - 中文版: 可能 "查看或添加评论"/"评论"
-     * bounds 中心约 (992, 1552) on 1080x2340 屏幕（屏宽 92%, 高 66%）
+     * - 中文版: "阅读或添加评论。N 条评论"
+     * bounds 大约在屏宽 92%, 高 58%-66% 区间
      */
     private suspend fun openCommentPanel(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
+        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "阅读或添加评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
             ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
             ?: AccessibilityUtils.findNodeByDescription(root, "comments")
             ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "条评论")
             ?: AccessibilityUtils.findNodeByDescription(root, "评论")
             ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
         if (commentBtn == null) {
             addLog("⚠️ 找不到评论按钮节点, 按相对坐标 tap")
-            // 兜底：评论按钮在右侧, 屏幕宽 92%, 高 66% 附近
-            AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.663f)
+            // 兜底：评论按钮在右侧, 屏幕宽 92%, 高 62% 附近 (中英文版差异折中)
+            AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.62f)
             delay(2500)
             return true
         }
@@ -865,32 +966,74 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /**
      * 收集评论 list 里的每条评论 item 节点。
-     * TikTok 的 view-id 被 R8 混淆，靠 id 不可靠。新策略：
-     * 1. 先找页面里最大的 scrollable 节点（评论列表 RecyclerView）
-     * 2. 取它的直接子节点作为 comment items
-     * 3. 兜底：用 viewId 启发式
+     * TikTok 的 view-id 被 R8 混淆，靠 id 不可靠。
+     * 策略:
+     * 1. 找页面里最大的 scrollable 节点（评论列表 RecyclerView）
+     * 2. 取它的所有子节点作为 comment items (放宽过滤, 评论高度 > 30 即可)
+     * 3. 实测发现部分评论 panel 子节点很多（含头像、用户名、评论文本、reply
+     *    等独立子项），所以再用 viewId="title"（用户名节点） 反查"评论容器"作兜底
      */
     private fun collectCommentItems(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        // 策略1：找评论列表 RecyclerView（最大的 scrollable 节点）
+        // 策略1：找 scrollable 评论列表
         val list = findCommentList(root)
         if (list != null && list.childCount > 0) {
             val items = mutableListOf<AccessibilityNodeInfo>()
             for (i in 0 until list.childCount) {
                 val child = list.getChild(i) ?: continue
-                // 过滤掉太小的（可能是分隔符等）
                 val r = android.graphics.Rect()
                 child.getBoundsInScreen(r)
-                if (r.height() > 80 && r.width() > screenWidth / 2) {
+                // 过滤掉空的或太小的项
+                if (r.height() > 30) {
                     items.add(child)
                 }
             }
-            if (items.isNotEmpty()) return items
+            if (items.isNotEmpty()) {
+                addLog("ℹ️ 评论列表找到 ${items.size} 项")
+                return items
+            }
         }
 
-        // 策略2：viewId 启发式（兜底）
+        // 策略2: 通过 rid 包含 "title" 的用户名节点反查评论容器
+        // (实测评论用户名都用 rid=...:id/title)
+        val titleNodes = mutableListOf<AccessibilityNodeInfo>()
+        collectNodesByViewIdEnd(root, "title", titleNodes)
+        if (titleNodes.isNotEmpty()) {
+            val items = titleNodes.mapNotNull { tn ->
+                // 取祖先节点作为该评论的容器（往上找 2-3 层）
+                var p: AccessibilityNodeInfo? = tn.parent
+                var depth = 0
+                while (p != null && depth < 3) {
+                    val r = android.graphics.Rect()
+                    p.getBoundsInScreen(r)
+                    if (r.height() > 80 && r.width() > screenWidth * 0.4) return@mapNotNull p
+                    p = p.parent
+                    depth++
+                }
+                tn
+            }
+            if (items.isNotEmpty()) {
+                addLog("ℹ️ 用户名节点反查找到 ${items.size} 评论")
+                return items
+            }
+        }
+
+        // 策略3: viewId 启发式（旧兜底）
         val result = mutableListOf<AccessibilityNodeInfo>()
         collectCommentItemsRecursive(root, result)
         return result
+    }
+
+    private fun collectNodesByViewIdEnd(
+        node: AccessibilityNodeInfo?,
+        suffix: String,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        val id = node.viewIdResourceName ?: ""
+        if (id.endsWith("/$suffix")) out.add(node)
+        for (i in 0 until node.childCount) {
+            collectNodesByViewIdEnd(node.getChild(i), suffix, out)
+        }
     }
 
     /**
@@ -959,8 +1102,14 @@ class TikTokAccessibilityService : AccessibilityService() {
     private fun collectTextsForComment(node: AccessibilityNodeInfo?, sb: StringBuilder) {
         node ?: return
         val id = node.viewIdResourceName ?: ""
-        // 跳过用户名节点（避免把用户名当评论内容关键词命中）
-        if (id.endsWith("user_name") || id.endsWith("tv_username")) return
+        // 跳过用户名节点和时间/reply 等无关文本
+        // 实测 TikTok 用户名 rid=...:id/title, 时间 rid=...:id/e7t, reply rid=...:id/e6l
+        if (id.endsWith("user_name") || id.endsWith("tv_username")
+            || id.endsWith("/title") || id.endsWith("/e7t") || id.endsWith("/e6l")
+        ) {
+            // 不递归到子节点，避免把这些区域的子文本算进去
+            return
+        }
         val txt = node.text?.toString()
         if (!txt.isNullOrBlank()) sb.append(txt).append(' ')
         for (i in 0 until node.childCount) {
@@ -1050,9 +1199,12 @@ class TikTokAccessibilityService : AccessibilityService() {
     private suspend fun sendSuperDm(profileRoot: AccessibilityNodeInfo): Int {
         if (config.dmTemplates.isEmpty()) return 0
 
-        // 点击私信按钮进入聊天
-        val msgBtn = AccessibilityUtils.findNodeByDescription(profileRoot, "Message")
-            ?: AccessibilityUtils.findNodeByText(profileRoot, "Message")
+        // 点击私信按钮进入聊天 (中英文兼容)
+        val msgBtn = AccessibilityUtils.findNodeByText(profileRoot, "消息", false)
+            ?: AccessibilityUtils.findNodeByText(profileRoot, "私信", false)
+            ?: AccessibilityUtils.findNodeByText(profileRoot, "Message", false)
+            ?: AccessibilityUtils.findNodeByDescription(profileRoot, "Message")
+            ?: AccessibilityUtils.findNodeByDescription(profileRoot, "消息")
             ?: AccessibilityUtils.findNodeByViewId(profileRoot, "message_btn")
             ?: AccessibilityUtils.findNodeByViewId(profileRoot, "btn_message")
 
@@ -1061,8 +1213,9 @@ class TikTokAccessibilityService : AccessibilityService() {
             return 0
         }
 
-        AccessibilityUtils.clickNode(msgBtn)
-        delay(2000)
+        addLog("✉️ tap 私信按钮")
+        tapNodeCenter(msgBtn)
+        delay(2200)
 
         // 决定本次发几条（超级话术：随机条数）
         val sendCount = if (config.superDmEnabled) {
@@ -1170,15 +1323,22 @@ class TikTokAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun tryFollowUser(profileRoot: AccessibilityNodeInfo): Boolean {
-        val followBtn = AccessibilityUtils.findNodeByText(profileRoot, "Follow", false)
+        // 中英文兼容: 中文版用户主页关注按钮 text="关注", 已关注变 "已关注"
+        val followBtn = AccessibilityUtils.findNodeByText(profileRoot, "关注", false)
+            ?: AccessibilityUtils.findNodeByText(profileRoot, "Follow", false)
             ?: AccessibilityUtils.findNodeByDescription(profileRoot, "Follow")
+            ?: AccessibilityUtils.findNodeByDescription(profileRoot, "关注")
 
         if (followBtn != null) {
             val text = followBtn.text?.toString() ?: ""
             val desc = followBtn.contentDescription?.toString() ?: ""
-            if (!text.contains("Following", true) && !desc.contains("Following", true)) {
-                AccessibilityUtils.clickNode(followBtn)
-                delay(500)
+            // 已关注: Following / 已关注 / 互相关注
+            if (text == "Follow" || text == "关注"
+                || (!text.contains("Following", true) && !text.contains("已关注") && !text.contains("互相"))
+            ) {
+                addLog("👤 tap 关注按钮")
+                tapNodeCenter(followBtn)
+                delay(800)
                 return true
             }
         }
