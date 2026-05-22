@@ -2,6 +2,7 @@ package com.tiktokassist.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -467,80 +468,116 @@ class TikTokAccessibilityService : AccessibilityService() {
     /**
      * 通过搜索入口跳到关键词搜索结果，并打开第一个视频。
      *
-     * TikTok 国际版的实际 UI 结构（实测）：
-     * - 顶部右上角放大镜：class=ImageView, clickable=true, content-desc="", 位置 [926,95][1080,249]
-     * - 搜索输入框：class=EditText, 自动 focused=true
-     * - 触发搜索按钮：右上角 text="Search" 的 Button
-     * - 搜索结果通常默认在 "Top" tab，第一个视频卡片通常带视频缩略图
+     * 实测 TikTok 国际版 (com.ss.android.ugc.trill) 真实 UI（1080x2340）：
+     * - 主 Feed 顶部右上角搜索图标: clickable ImageView, content-desc="",
+     *   bounds=[926,95][1080,249] → 中心 (1003, 172)
+     * - 搜索输入框: EditText, 自动 focused=true
+     * - 搜索提交按钮: text="Search" 的 Button（**注意**：clickNode 走 ACTION_CLICK
+     *   在这个按钮上常常无效，必须用 dispatchGesture 真人 tap 才生效）
+     * - 视频缩略图卡片: class=RelativeLayout, clickable=true,
+     *   宽约 525px (屏幕一半), 高 700-900px
+     * - 视频页评论按钮: content-desc="Read or add comments. N comments",
+     *   bounds=[904,1470][1080,1635] → 中心 (992, 1552)
      */
     private suspend fun navigateBySearchKeyword(keyword: String): Boolean {
         addLog("🔎 搜索关键词: $keyword")
 
-        // 确保在 Home tab（For You 页面）—— 找底部 nav 的 Home 按钮
+        // 0. 确保在主 Feed（Home tab 选中）
         ensureOnHomeFeed()
+        delay(800)
 
-        // 步骤1：从主页（For You）找搜索图标
+        // 1. 找搜索图标并 tap
         var root = rootInActiveWindow ?: return false
         val searchEntry = findTopRightSearchIcon(root)
-        if (searchEntry == null) {
-            addLog("⚠️ 找不到搜索图标，尝试点击右上角固定位置")
-            // 兜底：直接点击屏幕右上角固定坐标（约屏幕宽 93%、高 7%）
-            AccessibilityUtils.tapAt(this, screenWidth * 0.93f, screenHeight * 0.075f)
+        if (searchEntry != null) {
+            addLog("📍 tap 搜索图标")
+            tapNodeCenter(searchEntry)
         } else {
-            addLog("📍 找到搜索图标，点击")
-            AccessibilityUtils.clickNode(searchEntry)
+            addLog("⚠️ 找不到搜索图标，按屏幕右上角坐标 tap")
+            AccessibilityUtils.tapAt(this, screenWidth * 0.93f, screenHeight * 0.074f)
         }
-        delay(2000)
+        delay(2500) // 等输入框 + 键盘弹出
 
-        // 步骤2：找到搜索输入框
+        // 2. 找搜索输入框
         root = rootInActiveWindow ?: return false
         val searchInput = findEditableNode(root)
         if (searchInput == null) {
             addLog("⚠️ 找不到搜索输入框")
             return false
         }
-        addLog("✏️ 输入关键词")
-        AccessibilityUtils.clickNode(searchInput)
-        delay(500)
+        addLog("✏️ 输入关键词: $keyword")
+        // 输入框可能已经自动 focus；保险起见再 tap 一下，但用 dispatchGesture（更稳）
+        tapNodeCenter(searchInput)
+        delay(400)
+        // 先清空现有 hint/旧内容
+        val clearArgs = Bundle()
+        clearArgs.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        searchInput.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, clearArgs)
+        delay(200)
         AccessibilityUtils.typeText(searchInput, keyword)
-        delay(1000)
+        delay(1200)
 
-        // 步骤3：触发搜索 - text="Search" 的 Button
+        // 3. tap 提交搜索按钮 — 关键：用 dispatchGesture 而不是 ACTION_CLICK
         root = rootInActiveWindow ?: return false
         val searchBtn = AccessibilityUtils.findNodeByText(root, "Search", false)
             ?: AccessibilityUtils.findNodeByText(root, "搜索", false)
         if (searchBtn != null) {
-            addLog("🚀 提交搜索")
-            AccessibilityUtils.clickNode(searchBtn)
+            addLog("🚀 tap Search 按钮")
+            tapNodeCenter(searchBtn)
         } else {
-            addLog("⚠️ 找不到提交搜索按钮，尝试模拟回车")
-            // 兜底：通过 IME action 提交（EditText 的 IME_ACTION_SEARCH）
-            searchInput.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            addLog("⚠️ 找不到 Search 按钮，按屏幕右上角坐标 tap")
+            // Search 按钮通常在右上角 (屏幕宽 90%, 高 7%)
+            AccessibilityUtils.tapAt(this, screenWidth * 0.90f, screenHeight * 0.068f)
         }
-        delay(3000)
+        delay(5000) // 等搜索结果加载（网络慢时需要更长）
 
-        // 步骤4：在结果页找第一个视频卡片
+        // 4. 找第一个视频卡片
         root = rootInActiveWindow ?: return false
 
-        // 国际版 TikTok 搜索结果默认是 "Top" tab，里面有 "Videos" section
-        // 先尝试切换到 Videos tab（如果存在）
+        // 国际版搜索结果默认 "Top" tab。可选：切到 Videos tab 让结果都是视频
         val videoTab = AccessibilityUtils.findNodeByText(root, "Videos", false)
         if (videoTab != null && videoTab.isClickable) {
             addLog("📂 切到 Videos tab")
-            AccessibilityUtils.clickNode(videoTab)
-            delay(1500)
+            tapNodeCenter(videoTab)
+            delay(2000)
             root = rootInActiveWindow ?: return false
         }
 
-        val firstVideo = findFirstSearchResultVideo(root)
+        // 重试找视频卡片（结果可能渲染较慢）
+        var firstVideo: AccessibilityNodeInfo? = null
+        for (attempt in 1..3) {
+            firstVideo = findFirstSearchResultVideo(root)
+            if (firstVideo != null) break
+            addLog("⏳ 等待结果渲染 (${attempt}/3)")
+            delay(2000)
+            root = rootInActiveWindow ?: return false
+        }
         if (firstVideo == null) {
             addLog("⚠️ 找不到搜索结果视频")
             return false
         }
-        addLog("▶ 点击进入第一个视频")
-        AccessibilityUtils.clickNode(firstVideo)
-        delay(3000)
+        addLog("▶ tap 第一个视频")
+        tapNodeCenter(firstVideo)
+        delay(3500) // 等视频播放页加载
         addLog("✅ 已进入第一个视频")
+        return true
+    }
+
+    /**
+     * 用 dispatchGesture 模拟真人 tap 节点中心。
+     * 对某些 TikTok 按钮（如 Search 提交按钮），ACTION_CLICK 不响应，
+     * 必须用真人触摸 gesture 才生效。
+     */
+    private suspend fun tapNodeCenter(node: AccessibilityNodeInfo?): Boolean {
+        node ?: return false
+        val r = android.graphics.Rect()
+        node.getBoundsInScreen(r)
+        if (r.width() <= 0 || r.height() <= 0) return false
+        val cx = r.exactCenterX()
+        val cy = r.exactCenterY()
+        AccessibilityUtils.tapAt(this, cx, cy)
+        // 等 gesture 派发完成
+        delay(150)
         return true
     }
 
@@ -661,24 +698,25 @@ class TikTokAccessibilityService : AccessibilityService() {
     /**
      * 打开评论面板。
      * TikTok 国际版评论按钮的 content-desc 实际是 "Read or add comments. N comments"
-     * 所以我们用宽松匹配（findNode 默认是 substring）。
+     * bounds 中心约 (992, 1552)。同样要用 dispatchGesture tap 才稳。
      */
     private suspend fun openCommentPanel(): Boolean {
         val root = rootInActiveWindow ?: return false
-        // findNodeByDescription 默认应该是 contains（如果不是，下面这个会拿不到）
-        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "comment")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
+        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
             ?: AccessibilityUtils.findNodeByDescription(root, "comments")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
             ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
         if (commentBtn == null) {
             addLog("⚠️ 找不到评论按钮")
-            return false
+            // 兜底：按视频页评论按钮的固定坐标 tap
+            AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.663f)
+            delay(2500)
+            return true
         }
-        addLog("💬 打开评论区")
-        AccessibilityUtils.clickNode(commentBtn)
-        delay(2200) // 等评论面板动画 + 数据加载
+        addLog("💬 tap 评论按钮")
+        tapNodeCenter(commentBtn)
+        delay(2500)
         return true
     }
 
