@@ -53,6 +53,8 @@ class TikTokAccessibilityService : AccessibilityService() {
     private val processedCommentSignatures = HashSet<String>()
     // 搜索结果中已处理过的视频卡片 bounds 签名（避免重复点同一个）
     private val processedSearchVideoSignatures = HashSet<String>()
+    // 连续找不到评论按钮的次数 (用于触发强制重新搜索)
+    private var consecutiveCommentPanelFails = 0
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -420,14 +422,6 @@ class TikTokAccessibilityService : AccessibilityService() {
         val isSearchMode = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
             || config.targetSourceType == TargetSourceType.USERNAME
 
-        // 关键防御: 搜索/用户名模式下, 如果 navigatedToTarget=true 但当前不在视频播放页,
-        // 说明上次 BACK 或 ensureInTikTok 后, 状态丢失 (例如被拉回主 Feed).
-        // 强制 reset, 重新搜索, 避免在错误页面跑评论扫描.
-        if (isSearchMode && navigatedToTarget && !isOnVideoDetailPage()) {
-            addLog("⚠️ 当前不在视频播放页, 强制重新搜索 (保留已处理列表)")
-            navigatedToTarget = false
-        }
-
         // 第一次进入时根据来源类型导航
         if (!navigatedToTarget) {
             if (!navigateToTarget()) {
@@ -437,19 +431,21 @@ class TikTokAccessibilityService : AccessibilityService() {
             delay(2000)
         }
 
-        // 进入视频后再次确认 - 是否真在视频播放页
-        if (isSearchMode && !isOnVideoDetailPage()) {
-            addLog("⚠️ navigateToTarget 后仍不在视频播放页, 跳过本轮")
-            delay(2000)
-            return false
-        }
-
-        // 1. 打开评论区
+        // 1. 打开评论区 (openCommentPanel 内部 retry 8s 等待视频页加载)
         if (!openCommentPanel()) {
             addLog("⚠️ 找不到评论按钮，跳到下一个视频")
+            // 失败 = 当前可能在搜索结果列表/主 Feed/作者主页, 不应继续, 跳下一个
+            // 如果连续多次失败, 强制重新搜索
+            consecutiveCommentPanelFails++
+            if (isSearchMode && consecutiveCommentPanelFails >= 2) {
+                addLog("⚠️ 连续 ${consecutiveCommentPanelFails} 次找不到评论, 强制重新搜索")
+                navigatedToTarget = false
+                consecutiveCommentPanelFails = 0
+            }
             goToNextVideoInTask()
             return true
         }
+        consecutiveCommentPanelFails = 0
 
         // 2. 扫描评论 + 关键词匹配
         val processedThisVideo = scanCommentsAndAct(follow, dm, like, reply)
@@ -1082,20 +1078,23 @@ class TikTokAccessibilityService : AccessibilityService() {
      * bounds 大约在屏宽 92%, 高 58%-66% 区间
      */
     private suspend fun openCommentPanel(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "阅读或添加评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
-            ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "comments")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
-            ?: AccessibilityUtils.findNodeByDescription(root, "条评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "评论")
-            ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
-            ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
+        // TikTok 视频播放页加载需要 3-6s, 评论按钮节点挂载时间不定.
+        // 这里 retry 找节点最多 8s (16 次 × 500ms)
+        var commentBtn: AccessibilityNodeInfo? = null
+        for (attempt in 1..16) {
+            val root = rootInActiveWindow ?: run {
+                delay(500)
+                continue
+            }
+            commentBtn = findCommentButtonNode(root)
+            if (commentBtn != null) break
+            // 第 3 次没找到, 输出一次进度日志, 不要刷屏
+            if (attempt == 3) addLog("⏳ 等待视频页评论按钮挂载...")
+            delay(500)
+        }
         if (commentBtn == null) {
-            // 找不到节点 = 当前不在视频播放页. 不要再按相对坐标盲 tap,
-            // 否则会在搜索结果列表/主 Feed 上误触, 之后整个评论扫描跑在错的页面.
-            addLog("⚠️ 找不到评论按钮节点, 当前可能不在视频播放页")
+            // 8 秒后仍找不到 = 当前确实不在视频播放页. 不要盲 tap.
+            addLog("⚠️ 8s 内未找到评论按钮, 当前不像视频播放页")
             return false
         }
         addLog("💬 tap 评论按钮")
@@ -1104,19 +1103,26 @@ class TikTokAccessibilityService : AccessibilityService() {
         return true
     }
 
+    private fun findCommentButtonNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        return AccessibilityUtils.findNodeByDescription(root, "阅读或添加评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "comments")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "条评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "评论")
+            ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
+            ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
+    }
+
     /**
      * 检测当前页面是不是 TikTok 视频播放页(而不是搜索结果列表/主 Feed/作者主页等).
      * 特征: 有"评论"按钮节点 + 屏幕右侧有竖向操作栏 (赞/评/分享).
+     * 注意: 视频页加载慢, 调用方应留够等待时间 (3-8s), 不要立即调.
      */
     private fun isOnVideoDetailPage(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "阅读或添加评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
-            ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "条评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
-        return commentBtn != null
+        return findCommentButtonNode(root) != null
     }
 
     private fun swipeToNextVideo() {

@@ -130,10 +130,37 @@ object LicenseManager {
     fun getSavedKey(context: Context): String? =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_LICENSE_CODE, null)
 
-    /** 快速检查本地缓存的授权是否有效（每次启动调用） */
+    /**
+     * 快速检查本地缓存的授权是否有效（每次启动调用）.
+     *
+     * 设计要点: 优先信任本地保存的 (license_code + bound_device_id + expire_epoch_days),
+     * 只校验 expire 是否过期, 不再每次重新读 ANDROID_ID 比对 —— 因为部分 ROM
+     * (Flyme/MIUI/某些定制 Android 8+) 的 ANDROID_ID 在 系统更新/省电唤醒/
+     * 应用数据清空后 可能变化, 那种情况下用户已经激活过的设备会被误判 INVALID_DEVICE,
+     * 弹回激活页要求重新填授权码.
+     *
+     * 激活那一刻 (activateLicense → validateKey) 已经做过 deviceId 匹配 + HMAC 验证,
+     * 通过后保存到 SharedPreferences. 后续启动只要本地数据还在, 就视为 VALID.
+     */
     fun checkActivation(context: Context): LicenseInfo {
-        val savedKey = getSavedKey(context) ?: return LicenseInfo(LicenseResult.NOT_ACTIVATED)
-        return validateKey(context, savedKey)
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedKey = sp.getString(KEY_LICENSE_CODE, null)
+            ?: return LicenseInfo(LicenseResult.NOT_ACTIVATED)
+        val savedBoundDevice = sp.getString(KEY_DEVICE_ID, null)
+        val savedExpiry = sp.getInt(KEY_EXPIRE_DAYS, 0)
+
+        // 本地数据缺失/损坏 → fallback 走完整校验
+        if (savedBoundDevice.isNullOrBlank() || savedExpiry <= 0) {
+            return validateKey(context, savedKey)
+        }
+
+        val todayEpoch = (System.currentTimeMillis() / 86400000L).toInt()
+        val daysRemaining = savedExpiry - todayEpoch
+        if (daysRemaining < 0) {
+            return LicenseInfo(LicenseResult.EXPIRED, savedExpiry, daysRemaining)
+        }
+        // 直接信任本地激活记录
+        return LicenseInfo(LicenseResult.VALID, savedExpiry, daysRemaining)
     }
 
     // ==================== 有效期转换工具 ====================
