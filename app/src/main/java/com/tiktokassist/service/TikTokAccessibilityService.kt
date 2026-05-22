@@ -446,27 +446,92 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /**
      * 根据 targetSourceType 决定如何切换到下一个视频:
-     * - SEARCH_KEYWORD / USERNAME: BACK 一次回搜索结果页, tap 下一个未处理的视频卡片
-     *   (如果在搜索结果视频流里上滑, 容易跳到作者主页, 而不是切下一条搜索结果)
-     * - CURRENT_VIDEO / VIDEO_URL: 直接上滑切下一条 (主 Feed 行为)
+     *
+     * SEARCH_KEYWORD / USERNAME 模式 (主策略 = 上滑切下一条相关视频):
+     *   - 在搜索结果点击进入第一个视频后, TikTok 会进入"搜索结果视频流"
+     *     (顶部带"查找相关内容/搜索"框, 上滑可顺序切换下一条搜索相关视频)
+     *   - 评论 panel 已在调用方关闭(BACK 1次), 当前停留在视频播放页, 直接上滑切下一条
+     *   - 用 currentVideoSignature 跳过已处理的视频, 防止上滑卡在同一条
+     *   - 上滑连续 5 次都还在已处理视频 → BACK 回搜索结果列表, 滚动后选下一个卡片
+     *
+     * CURRENT_VIDEO / VIDEO_URL 模式: 直接上滑切下一条 (主 Feed 行为)
      */
     private suspend fun goToNextVideoInTask() {
-        val useSearchResultsBack = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
+        val isSearchMode = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
             || config.targetSourceType == TargetSourceType.USERNAME
 
-        if (!useSearchResultsBack) {
-            swipeToNextVideo()
+        if (!isSearchMode) {
+            // 主 Feed: 直接上滑
+            swipeUpInVideoArea()
+            delay(3000)
             return
         }
 
-        // 评论 panel 已关, 当前在视频播放页. 再 BACK 一次回搜索结果页
-        addLog("⬅ 返回搜索结果页")
+        // 搜索模式: 上滑切下一条搜索相关视频
+        repeat(5) { attempt ->
+            addLog("⬆ 上滑切下一条 (#${attempt + 1})")
+            swipeUpInVideoArea()
+            delay(2800)
+
+            val root = rootInActiveWindow ?: return
+            val sig = currentVideoSignature(root)
+            if (sig.isBlank()) {
+                addLog("ℹ️ 视频签名为空, 视为新视频")
+                return
+            }
+            if (!processedSearchVideoSignatures.contains(sig)) {
+                processedSearchVideoSignatures.add(sig)
+                addLog("✅ 进入新视频: ${sig.take(40)}")
+                return
+            }
+            addLog("⚠️ 仍是已处理视频, 再滑")
+        }
+
+        // 上滑 5 次还在已处理视频 → BACK 回搜索结果, 滚动后选下一个
+        addLog("⬅ 上滑无效, BACK 回搜索结果选下一个卡片")
+        backToSearchResultsAndPickNext()
+    }
+
+    /**
+     * 上滑切下一条视频, 起点/终点都在屏幕中央竖直方向上,
+     * 避开右侧的"作者头像/关注/点赞按钮列" (那一列从右上往左滑会进作者主页).
+     */
+    private fun swipeUpInVideoArea() {
+        val startX = screenWidth * 0.5f + Random.nextFloat() * 20 - 10
+        val endX = startX + Random.nextFloat() * 10 - 5
+        val startY = screenHeight * 0.78f
+        val endY = screenHeight * 0.22f
+        val path = android.graphics.Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 280))
+            .build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * 给当前视频播放页打稳定签名: 优先取作者名(@xxx) + 主要 hashtag.
+     * 实测 TikTok 视频播放页底部有 "作者名 · 日期" + "#hashtag1 #hashtag2 ..." 等稳定文本.
+     */
+    private fun currentVideoSignature(root: AccessibilityNodeInfo): String {
+        val texts = mutableListOf<String>()
+        collectTextsRecursive(root, texts, maxDepth = 12, depth = 0)
+        // 优先用 hashtag (#xxx) + @username 这种稳定标识
+        val tags = texts.filter { it.startsWith("#") || it.startsWith("@") }.distinct().take(8)
+        if (tags.isNotEmpty()) return tags.joinToString("|").take(200)
+        // 兜底: 取所有非空短文本拼接 (像评论数 "116", 视频描述等)
+        val sig = texts.filter { it.length in 2..40 }.distinct().take(15).joinToString("|").take(200)
+        return sig
+    }
+
+    private suspend fun backToSearchResultsAndPickNext() {
         performGlobalAction(GLOBAL_ACTION_BACK)
         delay(2500)
 
         // 在搜索结果页选下一个未处理的视频卡片
         var root = rootInActiveWindow ?: return
-        // 多 dump 几次, 等 fragment 重新 attach
         var candidates = mutableListOf<AccessibilityNodeInfo>()
         for (waitAttempt in 1..3) {
             candidates.clear()
@@ -491,7 +556,6 @@ class TikTokAccessibilityService : AccessibilityService() {
             )
         ).firstOrNull { !processedSearchVideoSignatures.contains(nodeBoundsSignature(it)) }
 
-        // 找不到 → 向下滑搜索结果页，再找
         var attempts = 0
         while (next == null && attempts < 3) {
             addLog("ℹ️ 当前屏无新视频, 向下滑结果列表 (#${attempts + 1})")
@@ -503,17 +567,16 @@ class TikTokAccessibilityService : AccessibilityService() {
         }
 
         if (next == null) {
-            addLog("⚠️ 找不到下一个搜索结果视频, 重置")
+            addLog("⚠️ 找不到下一个搜索结果视频, 重置已处理列表")
             processedSearchVideoSignatures.clear()
             return
         }
 
-        // 记录已处理 + tap
         val sig = nodeBoundsSignature(next)
         processedSearchVideoSignatures.add(sig)
         val r = android.graphics.Rect()
         next.getBoundsInScreen(r)
-        addLog("▶ tap 下一个视频 [${r.left},${r.top}]")
+        addLog("▶ tap 下一个视频卡片 [${r.left},${r.top}]")
         tapNodeCenter(next)
         delay(3500)
     }
@@ -972,18 +1035,19 @@ class TikTokAccessibilityService : AccessibilityService() {
                     doReplyToComment(item)
                 }
 
-                // 执行 follow / dm（点头像进个人主页）
+                // 执行 follow / dm (点头像进个人主页)
                 if (follow || dm) {
                     val avatar = findCommentAvatar(item)
                     if (avatar != null) {
-                        AccessibilityUtils.clickNode(avatar)
-                        delay(2200)
+                        val aRect = android.graphics.Rect()
+                        avatar.getBoundsInScreen(aRect)
+                        addLog("👆 tap 评论头像 [${aRect.centerX()},${aRect.centerY()}]")
+                        tapNodeCenter(avatar)
+                        delay(2500)
                         val profileRoot = rootInActiveWindow
                         if (profileRoot != null) {
-                            if (follow && tryFollowUser(profileRoot)) {
-                                stats.usersFollowed++
-                                addLog("👤 关注 [总计: ${stats.usersFollowed}]")
-                            }
+                            // 先 dm (profile 底部直接输入), 再 follow
+                            // 用户视频展示: 进 profile → 底部直接发"hi" → 已发送消息请求
                             if (dm) {
                                 val sent = sendSuperDm(profileRoot)
                                 if (sent > 0) {
@@ -991,10 +1055,26 @@ class TikTokAccessibilityService : AccessibilityService() {
                                     addLog("✉️ 私信×$sent [总计: ${stats.dmsSent}]")
                                 }
                             }
+                            // 如果 sendSuperDm 没 BACK (profile 底部直接发模式), 这里再处理 follow
+                            val afterDmRoot = rootInActiveWindow ?: profileRoot
+                            if (follow && tryFollowUser(afterDmRoot)) {
+                                stats.usersFollowed++
+                                addLog("👤 关注 [总计: ${stats.usersFollowed}]")
+                            }
                         }
-                        // 返回评论区
+                        // 返回评论区 (可能要 BACK 2 次: 聊天界面 → profile → 评论)
                         performGlobalAction(GLOBAL_ACTION_BACK)
-                        delay(1500)
+                        delay(800)
+                        // 检测当前是不是在评论 panel, 不在就再 BACK
+                        val r = rootInActiveWindow
+                        if (r != null) {
+                            val stillProfile = AccessibilityUtils.findNodeByText(r, "关注", false) != null
+                                || AccessibilityUtils.findNodeByText(r, "粉丝", false) != null
+                            if (stillProfile) {
+                                performGlobalAction(GLOBAL_ACTION_BACK)
+                                delay(800)
+                            }
+                        }
                     } else {
                         addLog("⚠️ 找不到该评论的头像")
                     }
@@ -1298,10 +1378,38 @@ class TikTokAccessibilityService : AccessibilityService() {
      * 超级话术：向当前用户主页发送随机条数的私信，每条随机选取
      * @return 实际发送条数
      */
+    /**
+     * 给某用户发私信. 支持两种 TikTok profile 模式:
+     *
+     * 模式 A (陌生人 / 未关注用户, 实测中文版优先这个):
+     *   - 用户主页底部直接有 "消息..." 输入框 + "向 xxx 发送消息请求" 提示
+     *   - 直接 tap 输入框 → 输入文本 → 点发送 (飞机图标 或 "发送" 按钮)
+     *   - 发送后显示 "已发送消息请求"
+     *
+     * 模式 B (互关 / 旧版 / 部分账号):
+     *   - profile 上有 "消息" / "Message" 按钮 (在头像下方)
+     *   - tap "消息" 按钮 → 进入聊天界面 → 输入框在底部 → 点发送
+     */
     private suspend fun sendSuperDm(profileRoot: AccessibilityNodeInfo): Int {
         if (config.dmTemplates.isEmpty()) return 0
 
-        // 点击私信按钮进入聊天 (中英文兼容)
+        // 决定本次发几条 (超级话术: 随机条数)
+        val sendCount = if (config.superDmEnabled) {
+            Random.nextInt(config.superDmMinCount, config.superDmMaxCount + 1)
+        } else {
+            1
+        }
+
+        // === 模式 A: profile 底部已经有消息输入框 (陌生人 DM 请求) ===
+        val directInput = findProfileBottomInput(profileRoot)
+        if (directInput != null) {
+            addLog("✉️ profile 底部直接发送消息请求模式")
+            val sent = doSendDmHere(directInput, sendCount)
+            // 不 BACK, 留在 profile, 调用方会处理后续
+            return sent
+        }
+
+        // === 模式 B: 点 "消息" 按钮进入聊天界面 ===
         val msgBtn = AccessibilityUtils.findNodeByText(profileRoot, "消息", false)
             ?: AccessibilityUtils.findNodeByText(profileRoot, "私信", false)
             ?: AccessibilityUtils.findNodeByText(profileRoot, "Message", false)
@@ -1311,55 +1419,88 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByViewId(profileRoot, "btn_message")
 
         if (msgBtn == null) {
-            addLog("⚠️ 未找到私信按钮")
+            addLog("⚠️ profile 上找不到消息按钮 / 底部输入框")
             return 0
         }
 
-        addLog("✉️ tap 私信按钮")
+        addLog("✉️ tap 消息按钮进入聊天")
         tapNodeCenter(msgBtn)
         delay(2200)
 
-        // 决定本次发几条（超级话术：随机条数）
-        val sendCount = if (config.superDmEnabled) {
-            Random.nextInt(config.superDmMinCount, config.superDmMaxCount + 1)
-        } else {
-            1
+        val chatRoot = rootInActiveWindow ?: return 0
+        val chatInput = findDmInputField(chatRoot)
+        if (chatInput == null) {
+            addLog("⚠️ 聊天界面找不到输入框")
+            return 0
         }
-
-        var sentCount = 0
-
-        repeat(sendCount) { i ->
-            val msgRoot = rootInActiveWindow ?: return sentCount
-
-            val inputField = findDmInputField(msgRoot)
-            if (inputField == null) {
-                addLog("⚠️ 未找到输入框（第${i + 1}条）")
-                return sentCount
-            }
-
-            AccessibilityUtils.clickNode(inputField)
-            delay(400 + Random.nextLong(200))
-
-            // 随机选一条话术
-            val dmText = config.dmTemplates.random()
-            AccessibilityUtils.typeText(inputField, dmText)
-            delay(500 + Random.nextLong(300))
-
-            // 点发送
-            val sendBtn = findSendButton(rootInActiveWindow)
-            if (sendBtn != null) {
-                AccessibilityUtils.clickNode(sendBtn)
-                sentCount++
-                delay(800 + Random.nextLong(500))   // 每条之间短暂间隔
-            } else {
-                addLog("⚠️ 未找到发送按钮")
-                return sentCount
-            }
-        }
-
+        val sent = doSendDmHere(chatInput, sendCount)
         performGlobalAction(GLOBAL_ACTION_BACK)
         delay(800)
+        return sent
+    }
+
+    /**
+     * 在指定输入框节点上发送 N 条话术.
+     * 输入框附近(通常右侧)有发送按钮(飞机图标 / "发送" 文字).
+     */
+    private suspend fun doSendDmHere(inputField: AccessibilityNodeInfo, sendCount: Int): Int {
+        var sentCount = 0
+        repeat(sendCount) { i ->
+            val freshRoot = rootInActiveWindow ?: return sentCount
+            // 每次重新找 inputField (avoid stale node)
+            val freshInput = findDmInputField(freshRoot) ?: inputField
+            tapNodeCenter(freshInput)
+            delay(500 + Random.nextLong(200))
+
+            val dmText = config.dmTemplates.random()
+            AccessibilityUtils.typeText(freshInput, dmText)
+            delay(700 + Random.nextLong(300))
+
+            val sendBtn = findSendButton(rootInActiveWindow)
+            if (sendBtn != null) {
+                addLog("📤 tap 发送 (第${i + 1}/$sendCount 条)")
+                tapNodeCenter(sendBtn)
+                sentCount++
+                delay(1000 + Random.nextLong(500))
+            } else {
+                addLog("⚠️ 找不到发送按钮 (第${i + 1}条)")
+                return sentCount
+            }
+        }
         return sentCount
+    }
+
+    /**
+     * 在用户 profile 页底部找直接发消息的输入框.
+     * 特征: EditText / 包含 contentDescription="消息" / hint="消息..." / 位于屏幕下方 (y > 70%)
+     */
+    private fun findProfileBottomInput(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // 优先: 屏幕下方的 EditText
+        val editFields = mutableListOf<AccessibilityNodeInfo>()
+        collectEditTextNodes(root, editFields)
+        val bottomEdit = editFields.firstOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.top > screenHeight * 0.65f
+        }
+        if (bottomEdit != null) return bottomEdit
+        // 兜底: 通过 desc/hint "消息"
+        return AccessibilityUtils.findNodeByDescription(root, "消息", true)
+            ?: AccessibilityUtils.findNodeByDescription(root, "Message", true)
+    }
+
+    private fun collectEditTextNodes(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        val cls = node.className?.toString() ?: ""
+        if (node.isEditable || cls == "android.widget.EditText") {
+            out.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            collectEditTextNodes(node.getChild(i), out)
+        }
     }
 
     // ==================== 基础操作 ====================
@@ -1461,10 +1602,56 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByViewId(root, "comment_user")
     }
 
+    /**
+     * 在评论 item 节点里找用户头像.
+     * 中文版 TikTok 头像 viewId 不一定是 iv_avatar, content-desc 也常是空, 所以加启发式:
+     * 找评论 item 内最左侧 (x < 节点宽度 25%) 的可点击 ImageView, 尺寸接近 80-200px (圆头像).
+     */
     private fun findCommentAvatar(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        return AccessibilityUtils.findNodeByViewId(node, "iv_avatar")
+        // 优先 viewId / description
+        val byId = AccessibilityUtils.findNodeByViewId(node, "iv_avatar")
+            ?: AccessibilityUtils.findNodeByViewId(node, "avatar")
             ?: AccessibilityUtils.findNodeByDescription(node, "Avatar")
             ?: AccessibilityUtils.findNodeByDescription(node, "Profile")
+            ?: AccessibilityUtils.findNodeByDescription(node, "头像")
+        if (byId != null) return byId
+        // 启发式: 评论 item 最左边的可点击 ImageView
+        val itemRect = android.graphics.Rect()
+        node.getBoundsInScreen(itemRect)
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        collectClickableImagesIn(node, candidates)
+        return candidates
+            .filter { c ->
+                val r = android.graphics.Rect()
+                c.getBoundsInScreen(r)
+                val w = r.width()
+                val h = r.height()
+                // 在 item 最左 25% 区域 + 尺寸像头像 + 宽高接近
+                r.left < itemRect.left + itemRect.width() * 0.25
+                    && w in 60..250 && h in 60..250
+                    && kotlin.math.abs(w - h) < 20
+            }
+            .minByOrNull { c ->
+                val r = android.graphics.Rect()
+                c.getBoundsInScreen(r)
+                r.left
+            }
+    }
+
+    private fun collectClickableImagesIn(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        if (node.isClickable) {
+            val cls = node.className?.toString() ?: ""
+            if (cls.contains("ImageView") || cls.contains("Image")) {
+                out.add(node)
+            }
+        }
+        for (i in 0 until node.childCount) {
+            collectClickableImagesIn(node.getChild(i), out)
+        }
     }
 
     private fun findCommentLikeBtn(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -1484,18 +1671,88 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByDescription(root, "Add a comment")
     }
 
+    /**
+     * 找私信/聊天界面的文本输入框. 兼容:
+     * - 聊天界面: EditText 在底部
+     * - profile 底部消息请求模式: EditText hint="消息..." 在屏幕下方
+     */
     private fun findDmInputField(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        return AccessibilityUtils.findNodeByViewId(root, "et_input")
+        root ?: return null
+        // 先按 viewId / description
+        val byId = AccessibilityUtils.findNodeByViewId(root, "et_input")
             ?: AccessibilityUtils.findNodeByViewId(root, "chat_input")
+            ?: AccessibilityUtils.findNodeByViewId(root, "et_chat")
             ?: AccessibilityUtils.findNodeByViewId(root, "input")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Message")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Message", true)
+            ?: AccessibilityUtils.findNodeByDescription(root, "消息", true)
+        if (byId != null) return byId
+        // 启发式: 屏幕下方 (y > 65%) 的 EditText
+        val edits = mutableListOf<AccessibilityNodeInfo>()
+        collectEditTextNodes(root, edits)
+        return edits.firstOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.top > screenHeight * 0.65f
+        } ?: edits.firstOrNull()
     }
 
+    /**
+     * 找发送按钮. 中文 TikTok 私信发送按钮:
+     * - 通常在输入框右边 (飞机图标)
+     * - 文本 "发送" / "Send"
+     * - contentDescription = "Send" / "发送"
+     * 启发式兜底: 找输入框, 然后在它右边/同一行附近找可点击的图标
+     */
     private fun findSendButton(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        return AccessibilityUtils.findNodeByDescription(root, "Send")
+        root ?: return null
+        val byText = AccessibilityUtils.findNodeByDescription(root, "Send", false)
+            ?: AccessibilityUtils.findNodeByDescription(root, "发送", false)
             ?: AccessibilityUtils.findNodeByText(root, "Send", false)
+            ?: AccessibilityUtils.findNodeByText(root, "发送", false)
             ?: AccessibilityUtils.findNodeByViewId(root, "btn_send")
             ?: AccessibilityUtils.findNodeByViewId(root, "send_btn")
+            ?: AccessibilityUtils.findNodeByViewId(root, "iv_send")
+        if (byText != null) return byText
+        // 启发式: 在 EditText 右边找可点击的小图标 (40-160px 的方形)
+        val edits = mutableListOf<AccessibilityNodeInfo>()
+        collectEditTextNodes(root, edits)
+        val edit = edits.firstOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.top > screenHeight * 0.55f
+        } ?: return null
+        val editRect = android.graphics.Rect()
+        edit.getBoundsInScreen(editRect)
+        // 找在 edit 右边 ±20px 上下范围内的可点击图标
+        val rightIcons = mutableListOf<AccessibilityNodeInfo>()
+        collectClickableIconsNear(root, rightIcons, editRect)
+        return rightIcons.firstOrNull()
+    }
+
+    private fun collectClickableIconsNear(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>,
+        nearRect: android.graphics.Rect
+    ) {
+        node ?: return
+        if (node.isClickable) {
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            val w = r.width()
+            val h = r.height()
+            // 在 EditText 右边 + 上下大致对齐 + 尺寸像图标
+            if (r.left >= nearRect.right - 50
+                && r.left < nearRect.right + 400
+                && r.centerY() in (nearRect.centerY() - 100)..(nearRect.centerY() + 100)
+                && w in 40..200
+                && h in 40..200
+            ) {
+                out.add(node)
+            }
+        }
+        for (i in 0 until node.childCount) {
+            collectClickableIconsNear(node.getChild(i), out, nearRect)
+        }
     }
 
     // ==================== 工具方法 ====================
