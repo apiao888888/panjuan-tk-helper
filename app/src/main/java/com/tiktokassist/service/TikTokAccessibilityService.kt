@@ -531,19 +531,21 @@ class TikTokAccessibilityService : AccessibilityService() {
         }
         delay(5000) // 等搜索结果加载（网络慢时需要更长）
 
-        // 4. 找第一个视频卡片
+        // 4. 强制切到 "视频"/"Videos" tab —— 默认"综合/Top" tab 第一项可能是用户卡片
+        //    点了会进用户主页, 而不是视频播放页
         root = rootInActiveWindow ?: return false
-
-        // 国际版搜索结果默认 "Top" tab。可选：切到 Videos tab 让结果都是视频
-        val videoTab = AccessibilityUtils.findNodeByText(root, "Videos", false)
-        if (videoTab != null && videoTab.isClickable) {
-            addLog("📂 切到 Videos tab")
+        val videoTab = AccessibilityUtils.findNodeByText(root, "视频", false)
+            ?: AccessibilityUtils.findNodeByText(root, "Videos", false)
+        if (videoTab != null) {
+            addLog("📂 切到「视频」tab")
             tapNodeCenter(videoTab)
-            delay(2000)
+            delay(2500)
             root = rootInActiveWindow ?: return false
+        } else {
+            addLog("ℹ️ 未找到「视频」tab, 使用默认 tab")
         }
 
-        // 重试找视频卡片（结果可能渲染较慢）
+        // 5. 重试找视频卡片
         var firstVideo: AccessibilityNodeInfo? = null
         for (attempt in 1..3) {
             firstVideo = findFirstSearchResultVideo(root)
@@ -640,19 +642,36 @@ class TikTokAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 找搜索结果页里的第一个视频卡片。TikTok 搜索结果通常是 RecyclerView 里的卡片，
-     * 每个卡片包含视频缩略图和标题。
-     * 策略：找第一个 clickable=true 且在屏幕可见区域的 ImageView/容器（视频缩略图）。
+     * 找搜索结果页第一个视频卡片。
+     *
+     * 实测特征（中文版 / 英文版都符合）：
+     * - 宽度 ≈ 屏宽 / 2（两列网格）
+     * - 高度 700~1100（竖向视频缩略图）
+     * - clickable=true
+     * - class 包含 FrameLayout / RelativeLayout / ViewGroup
+     * - 在 y > 280 区域（跳过 tabs）
      */
     private fun findFirstSearchResultVideo(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         val candidates = mutableListOf<AccessibilityNodeInfo>()
         collectVideoResultCandidates(root, candidates)
-        // 选最靠上的那个（最先出现的搜索结果）
-        return candidates.minByOrNull { node ->
-            val r = android.graphics.Rect()
-            node.getBoundsInScreen(r)
-            r.top
-        }
+        if (candidates.isEmpty()) return null
+
+        // 排序: 先按 y, 再按 x。选第一行第一个（左上）
+        return candidates.minWithOrNull(
+            compareBy(
+                { node ->
+                    val r = android.graphics.Rect()
+                    node.getBoundsInScreen(r)
+                    // 把 y 按 200px 分桶，相同桶里再按 x 排
+                    r.top / 200
+                },
+                { node ->
+                    val r = android.graphics.Rect()
+                    node.getBoundsInScreen(r)
+                    r.left
+                }
+            )
+        )
     }
 
     private fun collectVideoResultCandidates(
@@ -666,13 +685,17 @@ class TikTokAccessibilityService : AccessibilityService() {
             val w = r.width()
             val h = r.height()
             val cls = node.className?.toString() ?: ""
-            // 视频卡片：宽度通常占屏幕 30%~50%，高宽比 1:1 ~ 16:9
-            // 在可见区（y > 状态栏 200，y < 屏幕高度 85%）
-            if (w in (screenWidth / 4)..(screenWidth * 3 / 4)
-                && h in 300..1200
-                && r.top in 200..(screenHeight * 85 / 100)
+            // 视频卡片严格特征：
+            // - 宽约屏宽一半 (40%~60%)
+            // - 高 600 ~ 1300（竖向视频缩略图）
+            // - 不在 tab bar 区域（y > 280）
+            // - 不顶到屏底（y < 屏高 95%）
+            // - class 是布局容器（不是单纯 Button/TextView）
+            if (w in (screenWidth * 40 / 100)..(screenWidth * 60 / 100)
+                && h in 600..1300
+                && r.top in 280..(screenHeight * 95 / 100)
                 && (cls.contains("FrameLayout") || cls.contains("ViewGroup")
-                    || cls.contains("ImageView") || cls.contains("RelativeLayout"))
+                    || cls.contains("RelativeLayout"))
             ) {
                 out.add(node)
             }
@@ -697,19 +720,23 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /**
      * 打开评论面板。
-     * TikTok 国际版评论按钮的 content-desc 实际是 "Read or add comments. N comments"
-     * bounds 中心约 (992, 1552)。同样要用 dispatchGesture tap 才稳。
+     * 评论按钮 content-desc：
+     * - 英文版: "Read or add comments. N comments"
+     * - 中文版: 可能 "查看或添加评论"/"评论"
+     * bounds 中心约 (992, 1552) on 1080x2340 屏幕（屏宽 92%, 高 66%）
      */
     private suspend fun openCommentPanel(): Boolean {
         val root = rootInActiveWindow ?: return false
         val commentBtn = AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
             ?: AccessibilityUtils.findNodeByDescription(root, "comments")
             ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "评论")
             ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
         if (commentBtn == null) {
-            addLog("⚠️ 找不到评论按钮")
-            // 兜底：按视频页评论按钮的固定坐标 tap
+            addLog("⚠️ 找不到评论按钮节点, 按相对坐标 tap")
+            // 兜底：评论按钮在右侧, 屏幕宽 92%, 高 66% 附近
             AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.663f)
             delay(2500)
             return true
