@@ -1206,10 +1206,23 @@ class TikTokAccessibilityService : AccessibilityService() {
             checkPaused()
             val root = rootInActiveWindow ?: return matched
 
-            // 关键: 退出 TikTok 立即停止扫描, 不要在判官TK助手主界面/launcher 上误识别评论
+            // 关键: 退出 TikTok 立即停止扫描
             if (!isInTiktok()) {
                 addLog("⚠️ 评论扫描中离开了 TikTok, 停止当前视频扫描")
                 return matched
+            }
+
+            // 关键: 检查是否仍在评论面板 (每 5 次循环检查一次, 避免导航到别处后继续"扫描")
+            // 评论面板特征: 有 "条评论"/"添加评论"/"Add comment" 文字
+            if (scrollAttempts % 5 == 0 && scrollAttempts > 0) {
+                val isCommentPanel = AccessibilityUtils.findNodeByText(root, "条评论", true) != null
+                    || AccessibilityUtils.findNodeByText(root, "添加评论", true) != null
+                    || AccessibilityUtils.findNodeByText(root, "Add comment", true) != null
+                    || AccessibilityUtils.findNodeByText(root, "comments", true) != null
+                if (!isCommentPanel) {
+                    addLog("⚠️ 评论面板已消失 (可能误导航), 停止本视频扫描")
+                    return matched
+                }
             }
 
             val commentItems = collectCommentItems(root)
@@ -1523,13 +1536,14 @@ class TikTokAccessibilityService : AccessibilityService() {
         val filtered = pieces
             .map { it.trim() }
             .filter { it.length >= 2 }
-            .filterNot { it.matches(Regex("^\\d+[wkmKMW天小时分秒前]*$")) }  // 纯数字/带单位 (点赞数/时间)
-            .filterNot { it.matches(Regex("^\\d{1,2}[-/]\\d{1,2}$")) }       // 日期如 04-17 / 4/17
-            .filterNot { it.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")) }        // 日期如 2025-04-17
+            .filterNot { it.matches(Regex("^[\\d.]+[wkmKMW万千亿天小时分秒前]*$")) } // 数字/带小数带单位 (点赞/播放量等)
+            .filterNot { it.matches(Regex("^\\d{1,2}[-/]\\d{1,2}$")) }              // 日期如 04-17
+            .filterNot { it.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")) }               // 日期如 2025-04-17
             .filterNot { it.equals("Reply", true) || it == "回复" || it == "回覆" }
-            .filterNot { it.contains("View") && it.contains("more") }          // View N more replies
+            .filterNot { it.contains("View") && it.contains("more") }
             .filterNot { it.contains("查看") && (it.contains("回复") || it.contains("条")) }
             .filterNot { it == "Translate" || it == "翻译" || it == "查看翻译" }
+            .filterNot { it.matches(Regex("^\\d+\\.\\d+[wkmKMW万千亿]?$")) }        // 70.5万 / 1.3万 等
         return filtered.joinToString(" ").trim()
     }
 
@@ -1561,36 +1575,51 @@ class TikTokAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 滚动评论列表。先尝试通过 RecyclerView 的 ACTION_SCROLL_FORWARD（更稳定），
-     * 失败则用手势。最后必须 delay 等 UI 刷新。
+     * 滚动评论列表。
+     * 1. 优先 ACTION_SCROLL_FORWARD (无副作用，不会误划出评论区)
+     * 2. 只有找到了评论 RecyclerView 且 ACTION_SCROLL_FORWARD 失败，
+     *    才用在该 RecyclerView 边界内的手势滚动。
+     * 3. 如果找不到评论列表，直接 return 不发任何手势——
+     *    防止在视频页/作者主页误触发"切到作者主页"等手势。
      */
     private suspend fun scrollCommentList() {
         val root = rootInActiveWindow
         val list = if (root != null) findCommentList(root) else null
 
+        if (list == null) {
+            // 没有评论列表节点 → 不滚动，直接返回
+            delay(600)
+            return
+        }
+
         var actionOk = false
-        if (list != null) {
-            try {
-                actionOk = list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-            } catch (e: Exception) {
-                actionOk = false
-            }
+        try {
+            actionOk = list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+        } catch (e: Exception) {
+            actionOk = false
         }
 
         if (!actionOk) {
-            // 手势滚动：评论 panel 通常占屏幕下 65%
-            // 从下往上扫（实际滑动 distance 要大一点）
-            val startY = screenHeight * 0.85f
-            val endY = screenHeight * 0.45f
+            // 用评论 RecyclerView 本身的边界来约束手势坐标，避免划出评论区
+            val listRect = android.graphics.Rect()
+            list.getBoundsInScreen(listRect)
             val x = screenWidth * 0.5f
-            val path = android.graphics.Path().apply {
-                moveTo(x, startY)
-                lineTo(x, endY)
+            // startY: RecyclerView 底部向上 10%
+            val startY = (listRect.bottom - listRect.height() * 0.10f)
+                .coerceIn(listRect.top.toFloat(), listRect.bottom.toFloat())
+            // endY: RecyclerView 顶部向下 15%（保证手势终点在列表内）
+            val endY = (listRect.top + listRect.height() * 0.15f)
+                .coerceIn(listRect.top.toFloat(), listRect.bottom.toFloat())
+            if (startY > endY + 50) {
+                val path = android.graphics.Path().apply {
+                    moveTo(x, startY)
+                    lineTo(x, endY)
+                }
+                val gesture = android.accessibilityservice.GestureDescription.Builder()
+                    .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 400))
+                    .build()
+                dispatchGesture(gesture, null, null)
             }
-            val gesture = android.accessibilityservice.GestureDescription.Builder()
-                .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 400))
-                .build()
-            dispatchGesture(gesture, null, null)
         }
         // 等手势 + 内容加载完成
         delay(1200)
