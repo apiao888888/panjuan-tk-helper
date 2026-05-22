@@ -462,16 +462,39 @@ class TikTokAccessibilityService : AccessibilityService() {
         // 评论 panel 已关, 当前在视频播放页. 再 BACK 一次回搜索结果页
         addLog("⬅ 返回搜索结果页")
         performGlobalAction(GLOBAL_ACTION_BACK)
-        delay(2000)
+        delay(2500)
 
         // 在搜索结果页选下一个未处理的视频卡片
         var root = rootInActiveWindow ?: return
-        var next = findNextUnprocessedVideo(root)
+        // 多 dump 几次, 等 fragment 重新 attach
+        var candidates = mutableListOf<AccessibilityNodeInfo>()
+        for (waitAttempt in 1..3) {
+            candidates.clear()
+            collectVideoResultCandidates(root, candidates)
+            if (candidates.isNotEmpty()) break
+            delay(1000)
+            root = rootInActiveWindow ?: return
+        }
+        addLog("ℹ️ 搜索结果页找到 ${candidates.size} 个视频卡片 (已处理 ${processedSearchVideoSignatures.size})")
+        var next = candidates.sortedWith(
+            compareBy(
+                { node ->
+                    val r = android.graphics.Rect()
+                    node.getBoundsInScreen(r)
+                    r.top / 200
+                },
+                { node ->
+                    val r = android.graphics.Rect()
+                    node.getBoundsInScreen(r)
+                    r.left
+                }
+            )
+        ).firstOrNull { !processedSearchVideoSignatures.contains(nodeBoundsSignature(it)) }
 
         // 找不到 → 向下滑搜索结果页，再找
         var attempts = 0
         while (next == null && attempts < 3) {
-            addLog("ℹ️ 当前屏无新视频, 向下滑结果列表")
+            addLog("ℹ️ 当前屏无新视频, 向下滑结果列表 (#${attempts + 1})")
             scrollSearchResults()
             delay(1500)
             root = rootInActiveWindow ?: return
@@ -488,7 +511,9 @@ class TikTokAccessibilityService : AccessibilityService() {
         // 记录已处理 + tap
         val sig = nodeBoundsSignature(next)
         processedSearchVideoSignatures.add(sig)
-        addLog("▶ tap 下一个视频")
+        val r = android.graphics.Rect()
+        next.getBoundsInScreen(r)
+        addLog("▶ tap 下一个视频 [${r.left},${r.top}]")
         tapNodeCenter(next)
         delay(3500)
     }
@@ -1038,24 +1063,52 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /**
      * 找评论列表节点：
-     * - scrollable = true
-     * - 高度 > 屏幕高度 30%（必须是足够大的列表）
-     * - 优先选位置靠下（在评论 panel 区域）的
+     * 实测（中文版 TikTok）评论 panel 有 3 个 scrollable:
+     *   1. X.05Wd [0,0,1080,2271]  — 整屏顶层容器(不要)
+     *   2. ViewPager [0,0,1080,2136] — 视频+评论分页容器(不要)
+     *   3. androidx.recyclerview.widget.RecyclerView [0,986,1080,2099] ✓ — 真评论列表
+     * 优先级:
+     * - class 含 "RecyclerView" / "ListView" / "Recycler"
+     * - top > 屏幕高 25%(评论 panel 在下半部)
+     * - 高度 > 屏幕高 25%
      */
     private fun findCommentList(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         val all = mutableListOf<AccessibilityNodeInfo>()
         collectScrollableNodes(root, all)
         if (all.isEmpty()) return null
-        // 选 height 最大的那个，但要在屏幕下半部分（评论 panel 通常在下方）
-        return all.filter { node ->
+
+        // 优先级 1: 是 RecyclerView/ListView 类 + 位置在下半屏
+        val recyclerInPanel = all.firstOrNull { node ->
+            val cls = node.className?.toString() ?: ""
             val r = android.graphics.Rect()
             node.getBoundsInScreen(r)
-            r.height() > screenHeight * 0.25
+            (cls.contains("RecyclerView") || cls.contains("ListView"))
+                && r.top > screenHeight * 0.25
+                && r.height() > screenHeight * 0.25
+        }
+        if (recyclerInPanel != null) return recyclerInPanel
+
+        // 优先级 2: 任何 RecyclerView/ListView (不限位置)
+        val anyRecycler = all.firstOrNull { node ->
+            val cls = node.className?.toString() ?: ""
+            cls.contains("RecyclerView") || cls.contains("ListView")
+        }
+        if (anyRecycler != null) return anyRecycler
+
+        // 优先级 3: 在下半屏 + 大于屏高 25% 的最大 scrollable
+        val inPanel = all.filter { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.top > screenHeight * 0.25 && r.height() > screenHeight * 0.25
         }.maxByOrNull { node ->
             val r = android.graphics.Rect()
             node.getBoundsInScreen(r)
             r.height()
-        } ?: all.maxByOrNull { node ->
+        }
+        if (inPanel != null) return inPanel
+
+        // 兜底: 最大的 scrollable
+        return all.maxByOrNull { node ->
             val r = android.graphics.Rect()
             node.getBoundsInScreen(r)
             r.height()
