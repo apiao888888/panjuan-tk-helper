@@ -1100,8 +1100,8 @@ class TikTokAccessibilityService : AccessibilityService() {
                 return false
             }
             addLog("⚠️ 8s 未找到评论按钮节点, 用坐标兜底 tap 评论区域")
-            // 评论按钮在右侧操作栏: x≈92%, y≈62% (根据截图实测调整)
-            AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.62f)
+            // 评论按钮实测坐标: x≈90%, y≈66% (1080x2340 设备实测: center=(970,1552))
+            AccessibilityUtils.tapAt(this, screenWidth * 0.90f, screenHeight * 0.66f)
             delay(2500)
             // 检查是否打开了评论面板 (有 collectCommentItems 能识别的 scrollable)
             val root2 = rootInActiveWindow
@@ -1151,16 +1151,18 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
     }
 
-    /** 验证: 节点是右侧操作栏中下部的按钮 (不强求 isClickable, TikTok 部分版本 clickable=false) */
+    /**
+     * 验证: 节点是右侧操作栏的评论按钮.
+     * 实测: 1080×2340 屏, 评论按钮 center=(970,1552) → x=89.8%, y=66.3%
+     * 放宽到: x > 55%, y 在 40%~92% 之间
+     */
     private fun isValidCommentButton(node: AccessibilityNodeInfo): Boolean {
         val r = android.graphics.Rect()
         node.getBoundsInScreen(r)
         val cx = r.exactCenterX()
         val cy = r.exactCenterY()
-        // 必须在屏幕右侧 60% 以右 (避免左下角弹幕里同名描述节点)
-        // 必须在屏幕中下部 (避免顶部 tab/标题)
-        return cx > screenWidth * 0.60f
-            && cy > screenHeight * 0.25f
+        return cx > screenWidth * 0.55f
+            && cy > screenHeight * 0.40f
             && cy < screenHeight * 0.92f
     }
 
