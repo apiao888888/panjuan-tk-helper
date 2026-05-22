@@ -417,6 +417,17 @@ class TikTokAccessibilityService : AccessibilityService() {
             return false
         }
 
+        val isSearchMode = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
+            || config.targetSourceType == TargetSourceType.USERNAME
+
+        // 关键防御: 搜索/用户名模式下, 如果 navigatedToTarget=true 但当前不在视频播放页,
+        // 说明上次 BACK 或 ensureInTikTok 后, 状态丢失 (例如被拉回主 Feed).
+        // 强制 reset, 重新搜索, 避免在错误页面跑评论扫描.
+        if (isSearchMode && navigatedToTarget && !isOnVideoDetailPage()) {
+            addLog("⚠️ 当前不在视频播放页, 强制重新搜索 (保留已处理列表)")
+            navigatedToTarget = false
+        }
+
         // 第一次进入时根据来源类型导航
         if (!navigatedToTarget) {
             if (!navigateToTarget()) {
@@ -424,6 +435,13 @@ class TikTokAccessibilityService : AccessibilityService() {
             }
             navigatedToTarget = true
             delay(2000)
+        }
+
+        // 进入视频后再次确认 - 是否真在视频播放页
+        if (isSearchMode && !isOnVideoDetailPage()) {
+            addLog("⚠️ navigateToTarget 后仍不在视频播放页, 跳过本轮")
+            delay(2000)
+            return false
         }
 
         // 1. 打开评论区
@@ -458,6 +476,9 @@ class TikTokAccessibilityService : AccessibilityService() {
     /**
      * 确保 TikTok 在前台. 如果不是, 主动拉起 TikTok.
      * 返回 true 表示当前已在 TikTok, 否则 false (拉起失败).
+     *
+     * 注意: launcher intent 会进 TikTok 主 Feed, 不是搜索结果页.
+     * 调用方如果是搜索/用户名相关任务, 必须重置 navigatedToTarget=false 重新搜索.
      */
     private suspend fun ensureInTikTok(): Boolean {
         if (isInTiktok()) return true
@@ -471,7 +492,9 @@ class TikTokAccessibilityService : AccessibilityService() {
                     startActivity(intent)
                     delay(2500)
                     if (isInTiktok()) {
-                        addLog("✅ 已拉回 TikTok")
+                        addLog("✅ 已拉回 TikTok (落到主 Feed, 搜索任务会重新搜索)")
+                        // 关键: 拉回 TikTok 后落到主 Feed, 搜索状态丢失. 强制重置.
+                        navigatedToTarget = false
                         return true
                     }
                 } catch (e: Exception) {
@@ -665,13 +688,15 @@ class TikTokAccessibilityService : AccessibilityService() {
      */
     private fun nodeBoundsSignature(node: AccessibilityNodeInfo): String {
         val texts = mutableListOf<String>()
-        collectTextsRecursive(node, texts, maxDepth = 6, depth = 0)
+        collectTextsRecursive(node, texts, maxDepth = 10, depth = 0)
         val sig = texts.joinToString("|").take(200)
         return if (sig.isBlank()) {
-            // 兜底: 用 bounds (但不稳定)
+            // 兜底: 用 屏幕中心点的 行/列 桶位 (滚动前稳定; 滚动后会变, 但滚动后我们已重新扫一屏)
             val r = android.graphics.Rect()
             node.getBoundsInScreen(r)
-            "bounds:${r.left},${r.top},${r.right},${r.bottom}"
+            val col = (r.exactCenterX() / (screenWidth / 2f)).toInt() // 0=左列 1=右列
+            val row = (r.exactCenterY() / 300f).toInt()
+            "gridpos:c${col}_r${row}"
         } else sig
     }
 
@@ -694,23 +719,18 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /** 找下一个未处理的视频卡片 */
     private fun findNextUnprocessedVideo(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val candidates = mutableListOf<AccessibilityNodeInfo>()
-        collectVideoResultCandidates(root, candidates)
-        // 按 y/x 排序
-        val sorted = candidates.sortedWith(
-            compareBy(
-                { node ->
-                    val r = android.graphics.Rect()
-                    node.getBoundsInScreen(r)
-                    r.top / 200
-                },
-                { node ->
-                    val r = android.graphics.Rect()
-                    node.getBoundsInScreen(r)
-                    r.left
-                }
-            )
-        )
+        val raw = mutableListOf<AccessibilityNodeInfo>()
+        collectVideoResultCandidates(root, raw)
+        val candidates = dedupeVideoCandidates(raw)
+        val sorted = candidates.sortedWith(sortByGridPosition())
+        // 打印前 4 个候选
+        for ((idx, n) in sorted.withIndex().take(4)) {
+            val r = android.graphics.Rect()
+            n.getBoundsInScreen(r)
+            val sig = nodeBoundsSignature(n).take(30).replace("\n", " ")
+            val done = if (processedSearchVideoSignatures.contains(nodeBoundsSignature(n))) "✓已处理" else "✗未处理"
+            addLog("🔎 卡片#${idx + 1} [${r.left},${r.top}] ${done} sig=${sig}")
+        }
         return sorted.firstOrNull { !processedSearchVideoSignatures.contains(nodeBoundsSignature(it)) }
     }
 
@@ -943,25 +963,36 @@ class TikTokAccessibilityService : AccessibilityService() {
      * - 在 y > 280 区域（跳过 tabs）
      */
     private fun findFirstSearchResultVideo(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val candidates = mutableListOf<AccessibilityNodeInfo>()
-        collectVideoResultCandidates(root, candidates)
-        if (candidates.isEmpty()) return null
+        val raw = mutableListOf<AccessibilityNodeInfo>()
+        collectVideoResultCandidates(root, raw)
+        val candidates = dedupeVideoCandidates(raw)
+        if (candidates.isEmpty()) {
+            addLog("ℹ️ findFirstSearchResultVideo: 0 候选 (原始 ${raw.size})")
+            return null
+        }
+        val sorted = candidates.sortedWith(sortByGridPosition())
+        // 打印前 4 个候选, 便于诊断
+        for ((idx, n) in sorted.withIndex().take(4)) {
+            val r = android.graphics.Rect()
+            n.getBoundsInScreen(r)
+            addLog("🔎 候选#${idx + 1} [${r.left},${r.top},${r.right},${r.bottom}] ${r.width()}x${r.height()}")
+        }
+        return sorted.first()
+    }
 
-        // 排序: 先按 y, 再按 x。选第一行第一个（左上）
-        return candidates.minWithOrNull(
-            compareBy(
-                { node ->
-                    val r = android.graphics.Rect()
-                    node.getBoundsInScreen(r)
-                    // 把 y 按 200px 分桶，相同桶里再按 x 排
-                    r.top / 200
-                },
-                { node ->
-                    val r = android.graphics.Rect()
-                    node.getBoundsInScreen(r)
-                    r.left
-                }
-            )
+    /** 网格位置排序: 先按行 (y 桶), 再按列 (x). 行桶 = 300px (避免同一行两个卡片偏差被分桶到不同行) */
+    private fun sortByGridPosition(): Comparator<AccessibilityNodeInfo> {
+        return compareBy(
+            { node ->
+                val r = android.graphics.Rect()
+                node.getBoundsInScreen(r)
+                r.top / 300
+            },
+            { node ->
+                val r = android.graphics.Rect()
+                node.getBoundsInScreen(r)
+                r.left
+            }
         )
     }
 
@@ -970,30 +1001,64 @@ class TikTokAccessibilityService : AccessibilityService() {
         out: MutableList<AccessibilityNodeInfo>
     ) {
         node ?: return
-        if (node.isClickable) {
-            val r = android.graphics.Rect()
-            node.getBoundsInScreen(r)
-            val w = r.width()
-            val h = r.height()
-            val cls = node.className?.toString() ?: ""
-            // 视频卡片严格特征：
-            // - 宽约屏宽一半 (40%~60%)
-            // - 高 600 ~ 1300（竖向视频缩略图）
-            // - 不在 tab bar 区域（y > 280）
-            // - 不顶到屏底（y < 屏高 95%）
-            // - class 是布局容器（不是单纯 Button/TextView）
-            if (w in (screenWidth * 40 / 100)..(screenWidth * 60 / 100)
-                && h in 600..1300
-                && r.top in 280..(screenHeight * 95 / 100)
-                && (cls.contains("FrameLayout") || cls.contains("ViewGroup")
-                    || cls.contains("RelativeLayout"))
-            ) {
-                out.add(node)
-            }
+        // 注意: 不强制 isClickable=true!
+        // TikTok 的视频卡片自身常常 isClickable=false, 真正可点的是其父或子节点
+        // 我们只按 几何特征 (大小+位置) 收集, 用 tapNodeCenter (坐标 tap) 来点击, 不依赖 ACTION_CLICK
+        val r = android.graphics.Rect()
+        node.getBoundsInScreen(r)
+        val w = r.width()
+        val h = r.height()
+        val cls = node.className?.toString() ?: ""
+        // 视频卡片几何特征:
+        // - 宽 ~ 屏宽一半 (38%~62%)
+        // - 高 500 ~ 1400 (竖向视频缩略图)
+        // - 不在 tab bar 区域 (y_top > 200, 放宽一些)
+        // - 不顶到屏底 (y_bottom < 屏高 95%)
+        // - class 是布局容器
+        if (node.isVisibleToUser
+            && w in (screenWidth * 38 / 100)..(screenWidth * 62 / 100)
+            && h in 500..1400
+            && r.top in 200..(screenHeight * 95 / 100)
+            && r.bottom <= (screenHeight * 96 / 100)
+            && (cls.contains("FrameLayout") || cls.contains("ViewGroup")
+                || cls.contains("RelativeLayout") || cls.contains("LinearLayout"))
+        ) {
+            out.add(node)
         }
         for (i in 0 until node.childCount) {
             collectVideoResultCandidates(node.getChild(i), out)
         }
+    }
+
+    /**
+     * 同一视频卡片父子容器都符合"卡片"特征时, 会被收集多次.
+     * 这里按中心点 (x_bucket, y_bucket) 去重, 优先保留 面积最小的 (更内层的, 通常是真正的卡片本体).
+     * 桶大小 = 屏宽 / 4 (粗略两列网格区分)
+     */
+    private fun dedupeVideoCandidates(
+        candidates: List<AccessibilityNodeInfo>
+    ): List<AccessibilityNodeInfo> {
+        if (candidates.size <= 1) return candidates
+        val bucketX = (screenWidth / 4).coerceAtLeast(100)
+        val bucketY = 250
+        val grouped = mutableMapOf<Pair<Int, Int>, AccessibilityNodeInfo>()
+        for (n in candidates) {
+            val r = android.graphics.Rect()
+            n.getBoundsInScreen(r)
+            val key = (r.exactCenterX().toInt() / bucketX) to (r.exactCenterY().toInt() / bucketY)
+            val cur = grouped[key]
+            if (cur == null) {
+                grouped[key] = n
+            } else {
+                // 选 面积更小的 (内层卡片)
+                val rc = android.graphics.Rect()
+                cur.getBoundsInScreen(rc)
+                val areaCur = rc.width() * rc.height()
+                val areaNew = r.width() * r.height()
+                if (areaNew < areaCur) grouped[key] = n
+            }
+        }
+        return grouped.values.toList()
     }
 
     private fun findEditableNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
@@ -1028,16 +1093,30 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
         if (commentBtn == null) {
-            addLog("⚠️ 找不到评论按钮节点, 按相对坐标 tap")
-            // 兜底：评论按钮在右侧, 屏幕宽 92%, 高 62% 附近 (中英文版差异折中)
-            AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.62f)
-            delay(2500)
-            return true
+            // 找不到节点 = 当前不在视频播放页. 不要再按相对坐标盲 tap,
+            // 否则会在搜索结果列表/主 Feed 上误触, 之后整个评论扫描跑在错的页面.
+            addLog("⚠️ 找不到评论按钮节点, 当前可能不在视频播放页")
+            return false
         }
         addLog("💬 tap 评论按钮")
         tapNodeCenter(commentBtn)
         delay(2500)
         return true
+    }
+
+    /**
+     * 检测当前页面是不是 TikTok 视频播放页(而不是搜索结果列表/主 Feed/作者主页等).
+     * 特征: 有"评论"按钮节点 + 屏幕右侧有竖向操作栏 (赞/评/分享).
+     */
+    private fun isOnVideoDetailPage(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "阅读或添加评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "条评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "评论")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
+        return commentBtn != null
     }
 
     private fun swipeToNextVideo() {
