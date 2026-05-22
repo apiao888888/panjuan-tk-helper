@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark">
+
+    <!-- 顶部标题 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/tiktok_pink"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="TTk 辅助工具"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvAppVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v2.0.0"
+            android:textColor="#FFCCCC"
+            android:textSize="12sp"
+            android:padding="8dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- 免责声明 -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                app:cardCornerRadius="6dp"
+                app:cardBackgroundColor="#1A1A2E">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="免责声明：本作品仅供学习交流，不得用于任何商业及非法用途，因使用软件造成的使用者及任何第三方网站、app等的一切损失，皆由使用者承担。"
+                    android:textColor="#888888"
+                    android:textSize="11sp"
+                    android:padding="10dp"
+                    android:lineSpacingMultiplier="1.3" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- 服务状态卡片 -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardServiceStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                app:cardCornerRadius="8dp"
+                app:cardBackgroundColor="@color/card_red">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+                        <TextView
+                            android:id="@+id/tvServiceStatus"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="❌ 请先开启无障碍服务"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/red" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnEnableAccessibility"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:text="🔧 去开启"
+                            android:textSize="12sp"
+                            app:cornerRadius="6dp"
+                            app:backgroundTint="@color/accent_blue" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvCurrentMode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="当前功能：-"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- 启动按钮 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStartTask"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="▶  启动脚本"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp"
+                app:cornerRadius="8dp"
+                app:backgroundTint="@color/btn_start" />
+
+            <!-- 辅助功能按钮行 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="10dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnToggleFloat"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="🪟 悬浮窗"
+                    android:textSize="13sp"
+                    android:layout_marginEnd="4dp"
+                    app:cornerRadius="6dp"
+                    app:backgroundTint="@color/accent_blue" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOpenTiktok"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="📱 打开TikTok"
+                    android:textSize="13sp"
+                    android:layout_marginStart="4dp"
+                    app:cornerRadius="6dp"
+                    app:backgroundTint="@color/tiktok_pink" />
+            </LinearLayout>
+
+            <!-- 配置管理按钮行 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="10dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTaskConfig"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="⚙️ 脚本设置"
+                    android:textSize="13sp"
+                    android:layout_marginEnd="4dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    app:cornerRadius="6dp"
+                    app:strokeColor="@color/accent_blue"
+                    android:textColor="@color/accent_blue" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMessageTemplates"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="💬 话术管理"
+                    android:textSize="13sp"
+                    android:layout_marginStart="4dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    app:cornerRadius="6dp"
+                    app:strokeColor="@color/accent_orange"
+                    android:textColor="@color/accent_orange" />
+            </LinearLayout>
+
+            <!-- 实时统计 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:text="实时统计"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:background="@color/section_header" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                app:cardCornerRadius="0dp"
+                app:cardBackgroundColor="@color/card_dark">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/tvStatsLine1"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="视频: 0  |  点赞: 0  |  评论: 0  |  收藏: 0"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvStatsLine2"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="关注: 0  |  私信: 0  |  回复: 0"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvStatsLine3"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="总任务: 0  |  循环次数: 0  |  模式: -"
+                        android:textColor="@color/accent_blue"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- 实时日志 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:text="运行日志"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:background="@color/section_header" />
+
+            <ScrollView
+                android:id="@+id/scrollLog"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:layout_marginBottom="24dp"
+                android:background="@color/card_dark">
+                <TextView
+                    android:id="@+id/tvLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="等待启动..."
+                    android:textColor="#00FF88"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
+                    android:padding="8dp"
+                    android:lineSpacingMultiplier="1.4" />
+            </ScrollView>
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

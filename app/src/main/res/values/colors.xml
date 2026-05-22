@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色调 -->
+    <color name="tiktok_pink">#FE2C55</color>
+    <color name="tiktok_cyan">#25F4EE</color>
+    <color name="accent_blue">#4A90E2</color>
+    <color name="accent_orange">#FF7A00</color>
+    <color name="accent_purple">#A855F7</color>
+
+    <!-- 背景 -->
+    <color name="bg_dark">#0F0F0F</color>
+    <color name="card_dark">#1C1C1E</color>
+    <color name="card_item">#2C2C2E</color>
+    <color name="card_green">#0D2318</color>
+    <color name="card_red">#2A0D0D</color>
+
+    <!-- 文字 -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#A0A0A0</color>
+
+    <!-- 状态色 -->
+    <color name="green">#34C759</color>
+    <color name="red">#FF3B30</color>
+
+    <!-- 按钮 -->
+    <color name="btn_start">#34C759</color>
+    <color name="btn_stop">#FF3B30</color>
+
+    <!-- 区块标题 -->
+    <color name="section_header">#1A73E8</color>
+
+    <!-- 系统 -->
+    <color name="colorPrimary">#FE2C55</color>
+    <color name="colorPrimaryVariant">#C2183D</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorSecondary">#25F4EE</color>
+    <color name="colorOnSecondary">#000000</color>
+    <color name="colorSurface">#1C1C1E</color>
+    <color name="colorOnSurface">#FFFFFF</color>
+    <color name="colorBackground">#0F0F0F</color>
+    <color name="colorOnBackground">#FFFFFF</color>
+    <color name="colorError">#FF3B30</color>
+    <color name="colorOnError">#FFFFFF</color>
+</resources>

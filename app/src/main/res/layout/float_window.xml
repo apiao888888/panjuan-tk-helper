@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <!-- ========== 收起态：圆形悬浮球 ========== -->
+    <FrameLayout
+        android:id="@+id/layoutCollapsed"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:visibility="visible">
+
+        <View
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="@drawable/bg_float_bubble" />
+
+        <!-- 状态文字：TK / ▶ / ⏸ -->
+        <TextView
+            android:id="@+id/tvBubbleIcon"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:text="TK"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <!-- 运行指示灯（绿=运行中，橙=暂停） -->
+        <View
+            android:id="@+id/indicatorDot"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="3dp"
+            android:background="@drawable/bg_indicator_green"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- ========== 展开态：控制面板 ========== -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/layoutExpanded"
+        android:layout_width="260dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="16dp"
+        app:cardBackgroundColor="#F0101010">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- 标题栏 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <!-- 状态指示灯 -->
+                <View
+                    android:id="@+id/indicatorExpanded"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_indicator_green"
+                    android:layout_marginEnd="6dp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tvPanelTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="TikTok 辅助"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <!-- 收起按钮 -->
+                <TextView
+                    android:id="@+id/btnCollapse"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:text="−"
+                    android:textColor="#AAAAAA"
+                    android:textSize="20sp"
+                    android:gravity="center"
+                    android:background="@drawable/bg_float_close_btn"
+                    android:layout_marginEnd="4dp" />
+
+                <!-- 关闭悬浮窗按钮 -->
+                <TextView
+                    android:id="@+id/btnCloseFloat"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:text="×"
+                    android:textColor="#FF6B6B"
+                    android:textSize="18sp"
+                    android:gravity="center"
+                    android:background="@drawable/bg_float_close_btn" />
+            </LinearLayout>
+
+            <!-- 当前功能模式 -->
+            <TextView
+                android:id="@+id/tvCurrentMode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="功能：-"
+                android:textColor="#888888"
+                android:textSize="11sp"
+                android:layout_marginBottom="4dp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <!-- 实时统计 -->
+            <TextView
+                android:id="@+id/tvFloatStats"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="视频0  ❤0  💬0  👤0  ✉0"
+                android:textColor="#666666"
+                android:textSize="11sp"
+                android:layout_marginBottom="10dp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <!-- 分隔线 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#2A2A2A"
+                android:layout_marginBottom="10dp" />
+
+            <!-- ====== 三大控制按钮 ====== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <!-- 开启按钮 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFloatStart"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="▶"
+                    android:textSize="16sp"
+                    android:layout_marginEnd="4dp"
+                    app:cornerRadius="8dp"
+                    app:backgroundTint="@color/btn_start" />
+
+                <!-- 暂停/继续按钮 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFloatPause"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="⏸"
+                    android:textSize="16sp"
+                    android:layout_marginEnd="4dp"
+                    app:cornerRadius="8dp"
+                    app:backgroundTint="@color/accent_orange" />
+
+                <!-- 停止按钮 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFloatStop"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="⏹"
+                    android:textSize="16sp"
+                    app:cornerRadius="8dp"
+                    app:backgroundTint="@color/btn_stop" />
+            </LinearLayout>
+
+            <!-- 按钮标注 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="10dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="开启"
+                    android:textColor="#666666"
+                    android:textSize="10sp"
+                    android:gravity="center" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="暂停/继续"
+                    android:textColor="#666666"
+                    android:textSize="10sp"
+                    android:gravity="center" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="停止"
+                    android:textColor="#666666"
+                    android:textSize="10sp"
+                    android:gravity="center" />
+            </LinearLayout>
+
+            <!-- 分隔线 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#2A2A2A"
+                android:layout_marginBottom="8dp" />
+
+            <!-- 探针按钮（调试用） -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFloatProbe"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:text="🔍 抓取当前界面元素"
+                android:textSize="12sp"
+                android:layout_marginBottom="6dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                app:cornerRadius="6dp"
+                app:strokeColor="@color/accent_orange"
+                android:textColor="@color/accent_orange" />
+
+            <!-- 打开主界面 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFloatOpenApp"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:text="⚙️ 打开主界面设置"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                app:cornerRadius="6dp"
+                app:strokeColor="#333333"
+                android:textColor="#888888" />
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+</FrameLayout>

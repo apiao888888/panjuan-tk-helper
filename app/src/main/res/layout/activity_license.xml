@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark"
+    android:gravity="center_horizontal">
+
+    <!-- Logo 区域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/bg_license_header">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="判官"
+            android:textColor="#FFFFFF"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.2" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TK 助手"
+            android:textColor="#FFE0E0"
+            android:textSize="22sp"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:id="@+id/tvVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v2.0.0 · 长按此处进入注册机"
+            android:textColor="#AA8888"
+            android:textSize="11sp"
+            android:layout_marginTop="8dp"
+            android:padding="8dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- 激活状态提示 -->
+            <TextView
+                android:id="@+id/tvActivationStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="请输入授权码以激活判官TK助手"
+                android:textColor="#888888"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone" />
+
+            <!-- 设备码区域 -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="10dp"
+                app:cardBackgroundColor="@color/card_dark">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:id="@+id/tvDeviceIdLabel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="您的设备码（发给卖家获取授权码）："
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/tvDeviceId"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="获取中..."
+                            android:textColor="@color/tiktok_cyan"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:fontFamily="monospace"
+                            android:letterSpacing="0.1" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCopyDeviceId"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:text="复制"
+                            android:textSize="12sp"
+                            app:cornerRadius="6dp"
+                            app:backgroundTint="@color/accent_blue" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- 授权码输入 -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="10dp"
+                app:cardBackgroundColor="@color/card_dark">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="输入授权码："
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <EditText
+                        android:id="@+id/etLicenseKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:hint="XXXXX-XXXXX-XXXXX-XXXXX"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_secondary"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.1"
+                        android:inputType="textCapCharacters"
+                        android:background="@drawable/bg_input"
+                        android:padding="12dp"
+                        android:gravity="center"
+                        android:maxLines="1" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnActivate"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:text="激 活"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:layout_marginTop="12dp"
+                        app:cornerRadius="8dp"
+                        app:backgroundTint="@color/tiktok_pink" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- 购买说明 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📌 使用说明\n\n① 复制上方「设备码」发给卖家\n② 卖家根据设备码生成专属授权码\n③ 将授权码粘贴到上方输入框\n④ 点击「激活」即可使用\n\n⚠️ 授权码与设备绑定，换机需重新购买"
+                android:textColor="#666666"
+                android:textSize="12sp"
+                android:lineSpacingMultiplier="1.5"
+                android:padding="8dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

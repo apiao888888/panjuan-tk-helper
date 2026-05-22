@@ -1,0 +1,85 @@
+name: 编译判官TK助手 APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:   # 允许在 GitHub 网页上手动触发
+
+jobs:
+  build:
+    name: 编译 APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 拉取代码
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      # 2. 配置 JDK 17
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # 3. 配置 Android SDK
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 4. 自动补全 gradle-wrapper.jar（如果仓库中没有）
+      - name: 准备 Gradle Wrapper
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "下载 gradle-wrapper.jar..."
+            mkdir -p gradle/wrapper
+            wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /tmp/
+            cp /tmp/gradle-8.2/lib/plugins/gradle-wrapper-*.jar gradle/wrapper/gradle-wrapper.jar 2>/dev/null || \
+            wget -q https://raw.githubusercontent.com/gradle/gradle/v8.2.0/gradle/wrapper/gradle-wrapper.jar -O gradle/wrapper/gradle-wrapper.jar
+            echo "✅ gradle-wrapper.jar 准备完成"
+          fi
+          chmod +x ./gradlew
+
+      # 5. 编译 Debug APK
+      - name: 编译 Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # 6. 编译 Release APK（未签名）
+      - name: 编译 Release APK
+        run: ./gradlew assembleRelease --stacktrace
+        continue-on-error: true
+
+      # 7. 上传 Debug APK 作为构建产物
+      - name: 上传 Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 判官TK助手-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      # 8. 上传 Release APK
+      - name: 上传 Release APK
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: 判官TK助手-release-unsigned
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+          if-no-files-found: ignore
+
+      # 9. 显示构建结果
+      - name: 构建结果汇总
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "🎉 编译完成！"
+          echo "=========================================="
+          echo ""
+          echo "📦 生成的 APK 文件："
+          find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \; || echo "未找到 APK"
+          echo ""
+          echo "👉 请到 Actions 页面下载 APK："
+          echo "   https://github.com/${{ github.repository }}/actions"

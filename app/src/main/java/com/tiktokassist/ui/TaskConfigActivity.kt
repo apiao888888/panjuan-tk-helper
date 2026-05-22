@@ -1,0 +1,185 @@
+package com.tiktokassist.ui
+
+import android.os.Bundle
+import android.text.InputType
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.tiktokassist.databinding.ActivityTaskConfigBinding
+import com.tiktokassist.model.TaskMode
+import com.tiktokassist.ui.adapter.KeywordAdapter
+import com.tiktokassist.utils.PrefsManager
+
+class TaskConfigActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityTaskConfigBinding
+    private var selectedMode: TaskMode = TaskMode.NURTURE_ACCOUNT
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityTaskConfigBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        supportActionBar?.apply {
+            title = "脚本设置"
+            setDisplayHomeAsUpEnabled(true)
+        }
+
+        setupModeSpinner()
+        loadConfig()
+        setupListeners()
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        saveConfig()
+        finish()
+        return true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveConfig()
+    }
+
+    // ==================== 功能选择下拉框 ====================
+
+    private fun setupModeSpinner() {
+        val modeNames = TaskMode.allNames()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, modeNames).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        binding.spinnerMode.adapter = adapter
+        binding.spinnerMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                selectedMode = TaskMode.fromIndex(pos + 1)
+                updateTargetFieldVisibility()
+                saveConfig()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun updateTargetFieldVisibility() {
+        val needsTarget = selectedMode in listOf(
+            TaskMode.TARGET_FANS_FOLLOW,
+            TaskMode.TARGET_FANS_DM,
+            TaskMode.VIDEO_COMMENT_FOLLOW,
+            TaskMode.VIDEO_COMMENT_DM,
+            TaskMode.VIDEO_COMMENT_LIKE,
+            TaskMode.VIDEO_COMMENT_REPLY
+        )
+        binding.layoutTargetUsername.visibility = if (needsTarget) View.VISIBLE else View.GONE
+
+        // 养号功能才显示养号设置
+        val isNurture = selectedMode == TaskMode.NURTURE_ACCOUNT
+        binding.cardNurtureSettings.visibility = if (isNurture) View.VISIBLE else View.GONE
+    }
+
+    // ==================== 加载配置 ====================
+
+    private fun loadConfig() {
+        val config = PrefsManager.loadConfig(this)
+
+        // 功能选择
+        selectedMode = config.currentMode
+        binding.spinnerMode.setSelection(config.currentMode.index - 1)
+        updateTargetFieldVisibility()
+
+        // 目标账号
+        binding.etTargetUsername.setText(config.targetUsername)
+
+        // 超级话术
+        binding.switchSuperDm.isChecked = config.superDmEnabled
+        binding.etSuperDmMin.setText(config.superDmMinCount.toString())
+        binding.etSuperDmMax.setText(config.superDmMaxCount.toString())
+        updateSuperDmVisibility(config.superDmEnabled)
+
+        // 任务节奏
+        binding.etActionIntervalMin.setText(config.actionIntervalMinSec.toString())
+        binding.etActionIntervalMax.setText(config.actionIntervalMaxSec.toString())
+        binding.etBatchMin.setText(config.batchMinCount.toString())
+        binding.etBatchMax.setText(config.batchMaxCount.toString())
+        binding.etBatchRestMin.setText(config.batchRestMinSec.toString())
+        binding.etBatchRestMax.setText(config.batchRestMaxSec.toString())
+        binding.etCycleStop.setText(config.cycleStopCount.toString())
+        binding.etTotalLimit.setText(config.totalTaskLimit.toString())
+
+        // 养号设置
+        binding.switchNurtureLike.isChecked = config.nurtureAutoLike
+        binding.switchNurtureComment.isChecked = config.nurtureAutoComment
+        binding.switchNurtureFavorite.isChecked = config.nurtureAutoFavorite
+        binding.switchNurtureShare.isChecked = config.nurtureAutoShare
+        binding.etLikeRate.setText(config.nurtureLikeRate.toString())
+        binding.etCommentRate.setText(config.nurtureCommentRate.toString())
+        binding.etFavoriteRate.setText(config.nurtureFavoriteRate.toString())
+        binding.etShareRate.setText(config.nurtureShareRate.toString())
+        binding.etWatchMin.setText(config.nurtureWatchMinSec.toString())
+        binding.etWatchMax.setText(config.nurtureWatchMaxSec.toString())
+    }
+
+    // ==================== 监听器 ====================
+
+    private fun setupListeners() {
+        binding.switchSuperDm.setOnCheckedChangeListener { _, checked ->
+            updateSuperDmVisibility(checked)
+        }
+
+        binding.btnEditDmTemplates.setOnClickListener {
+            startActivity(android.content.Intent(this, MessageTemplateActivity::class.java))
+        }
+
+        binding.btnEditCommentTemplates.setOnClickListener {
+            startActivity(android.content.Intent(this, MessageTemplateActivity::class.java)
+                .putExtra("tab", "comment"))
+        }
+
+        binding.btnSave.setOnClickListener {
+            saveConfig()
+            Toast.makeText(this, "✅ 配置已保存", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateSuperDmVisibility(enabled: Boolean) {
+        binding.layoutSuperDmCount.visibility = if (enabled) View.VISIBLE else View.GONE
+    }
+
+    // ==================== 保存配置 ====================
+
+    private fun saveConfig() {
+        val config = PrefsManager.loadConfig(this)
+
+        config.currentMode = selectedMode
+        config.targetUsername = binding.etTargetUsername.text.toString().trim()
+
+        config.superDmEnabled = binding.switchSuperDm.isChecked
+        config.superDmMinCount = binding.etSuperDmMin.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 1
+        config.superDmMaxCount = binding.etSuperDmMax.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 3
+
+        config.actionIntervalMinSec = binding.etActionIntervalMin.text.toString().toIntOrNull() ?: 5
+        config.actionIntervalMaxSec = binding.etActionIntervalMax.text.toString().toIntOrNull() ?: 10
+        config.batchMinCount = binding.etBatchMin.text.toString().toIntOrNull() ?: 20
+        config.batchMaxCount = binding.etBatchMax.text.toString().toIntOrNull() ?: 50
+        config.batchRestMinSec = binding.etBatchRestMin.text.toString().toIntOrNull() ?: 300
+        config.batchRestMaxSec = binding.etBatchRestMax.text.toString().toIntOrNull() ?: 600
+        config.cycleStopCount = binding.etCycleStop.text.toString().toIntOrNull() ?: 10
+        config.totalTaskLimit = binding.etTotalLimit.text.toString().toIntOrNull() ?: 999
+
+        config.nurtureAutoLike = binding.switchNurtureLike.isChecked
+        config.nurtureAutoComment = binding.switchNurtureComment.isChecked
+        config.nurtureAutoFavorite = binding.switchNurtureFavorite.isChecked
+        config.nurtureAutoShare = binding.switchNurtureShare.isChecked
+        config.nurtureLikeRate = binding.etLikeRate.text.toString().toIntOrNull()?.coerceIn(0, 100) ?: 60
+        config.nurtureCommentRate = binding.etCommentRate.text.toString().toIntOrNull()?.coerceIn(0, 100) ?: 20
+        config.nurtureFavoriteRate = binding.etFavoriteRate.text.toString().toIntOrNull()?.coerceIn(0, 100) ?: 10
+        config.nurtureShareRate = binding.etShareRate.text.toString().toIntOrNull()?.coerceIn(0, 100) ?: 5
+        config.nurtureWatchMinSec = binding.etWatchMin.text.toString().toIntOrNull() ?: 5
+        config.nurtureWatchMaxSec = binding.etWatchMax.text.toString().toIntOrNull() ?: 15
+
+        PrefsManager.saveConfig(this, config)
+    }
+}

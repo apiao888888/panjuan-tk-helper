@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">判官TK助手</string>
+    <string name="accessibility_service_label">判官TK助手服务</string>
+    <string name="accessibility_service_description">判官TK助手需要无障碍服务权限以自动操作TikTok，包括刷视频、点赞、评论、关注和发送私信。开启后将在您切换到TikTok时自动执行已配置的任务。</string>
+</resources>
