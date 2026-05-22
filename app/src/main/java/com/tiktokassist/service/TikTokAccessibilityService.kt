@@ -1082,12 +1082,11 @@ class TikTokAccessibilityService : AccessibilityService() {
         // 这里 retry 找节点最多 8s (16 次 × 500ms)
         var commentBtn: AccessibilityNodeInfo? = null
         for (attempt in 1..16) {
-            val root = rootInActiveWindow ?: run {
-                delay(500)
-                continue
+            val root = rootInActiveWindow
+            if (root != null) {
+                commentBtn = findCommentButtonNode(root)
+                if (commentBtn != null) break
             }
-            commentBtn = findCommentButtonNode(root)
-            if (commentBtn != null) break
             // 第 3 次没找到, 输出一次进度日志, 不要刷屏
             if (attempt == 3) addLog("⏳ 等待视频页评论按钮挂载...")
             delay(500)
