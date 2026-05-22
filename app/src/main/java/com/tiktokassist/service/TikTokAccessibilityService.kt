@@ -518,11 +518,38 @@ class TikTokAccessibilityService : AccessibilityService() {
         delay(3500)
     }
 
-    /** 用 bounds 给视频卡片打签名 (位置可能因滚动变化, 不完美但够用) */
+    /**
+     * 给视频卡片打稳定签名
+     * Bounds 在搜索结果列表滚动后会变, 不能当签名(否则同一视频会被反复当成"新视频")
+     * 用卡片内所有 TextView 的文字拼接 (作者名+日期+hashtag+播放数 等都是稳定的)
+     */
     private fun nodeBoundsSignature(node: AccessibilityNodeInfo): String {
-        val r = android.graphics.Rect()
-        node.getBoundsInScreen(r)
-        return "${r.left},${r.top},${r.right},${r.bottom}"
+        val texts = mutableListOf<String>()
+        collectTextsRecursive(node, texts, maxDepth = 6, depth = 0)
+        val sig = texts.joinToString("|").take(200)
+        return if (sig.isBlank()) {
+            // 兜底: 用 bounds (但不稳定)
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            "bounds:${r.left},${r.top},${r.right},${r.bottom}"
+        } else sig
+    }
+
+    private fun collectTextsRecursive(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<String>,
+        maxDepth: Int,
+        depth: Int
+    ) {
+        node ?: return
+        if (depth > maxDepth) return
+        val t = node.text?.toString()?.trim() ?: ""
+        if (t.isNotEmpty() && t.length < 80) out.add(t)
+        val d = node.contentDescription?.toString()?.trim() ?: ""
+        if (d.isNotEmpty() && d.length < 80 && d != t) out.add(d)
+        for (i in 0 until node.childCount) {
+            collectTextsRecursive(node.getChild(i), out, maxDepth, depth + 1)
+        }
     }
 
     /** 找下一个未处理的视频卡片 */
@@ -892,7 +919,9 @@ class TikTokAccessibilityService : AccessibilityService() {
         val maxPerVideo = config.commentMaxPerVideo.coerceAtLeast(1)
         var matched = 0
         var scrollAttempts = 0
-        val maxScrollAttempts = 8
+        val maxScrollAttempts = 30  // 评论可能很多, 翻 30 次
+        var lastFirstCommentSig = ""  // 上次第一条评论的签名
+        var stagnantCount = 0  // 连续多少次滚动后内容没变
 
         while (matched < maxPerVideo && scrollAttempts < maxScrollAttempts
             && currentCoroutineContext().isActive) {
@@ -980,11 +1009,31 @@ class TikTokAccessibilityService : AccessibilityService() {
 
             if (matched >= maxPerVideo) break
 
+            // 在滚动前记录这一屏的"内容指纹"(第一条评论文本) 用于检测是否到底
+            val firstSig = commentItems.firstOrNull()?.let { extractCommentText(it) } ?: ""
+
             // 这一屏处理完了，向下滚动评论看更多
             scrollCommentList()
             scrollAttempts++
-            // 如果这一屏一个也没命中也没新评论，多滚几次后退出
             if (!actedAny) delay(600) else delay(300)
+
+            // 滚动后再 dump 看第一条评论变没变;
+            // 如果连续 2 次都没变, 认为到底, 退出
+            val rootAfter = rootInActiveWindow
+            if (rootAfter != null) {
+                val itemsAfter = collectCommentItems(rootAfter)
+                val firstSigAfter = itemsAfter.firstOrNull()?.let { extractCommentText(it) } ?: ""
+                if (firstSigAfter.isNotEmpty() && firstSigAfter == firstSig) {
+                    stagnantCount++
+                    if (stagnantCount >= 2) {
+                        addLog("ℹ️ 评论已到底, 共处理命中 $matched 条")
+                        break
+                    }
+                } else {
+                    stagnantCount = 0
+                }
+                lastFirstCommentSig = firstSigAfter
+            }
         }
         return matched
     }
