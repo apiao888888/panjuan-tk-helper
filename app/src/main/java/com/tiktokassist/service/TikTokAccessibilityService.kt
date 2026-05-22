@@ -409,9 +409,11 @@ class TikTokAccessibilityService : AccessibilityService() {
     private suspend fun doVideoCommentAction(
         follow: Boolean, dm: Boolean, like: Boolean, reply: Boolean
     ): Boolean {
-        if (currentPackage !in TIKTOK_PACKAGES) {
-            addLog("⏳ 请先切到 TikTok 应用")
-            delay(1500)
+        // 必须在 TikTok 才操作. 用 rootInActiveWindow.packageName 严格检查,
+        // 不依赖 onAccessibilityEvent 更新的 currentPackage(可能滞后).
+        if (!ensureInTikTok()) {
+            addLog("⏳ 等待回到 TikTok...")
+            delay(2000)
             return false
         }
 
@@ -435,13 +437,80 @@ class TikTokAccessibilityService : AccessibilityService() {
         val processedThisVideo = scanCommentsAndAct(follow, dm, like, reply)
         addLog("📊 本视频处理评论 $processedThisVideo 条")
 
-        // 3. 关闭评论区
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        delay(1000)
+        // 3. 关闭评论区 (只关 panel, 不要把视频也关了)
+        // 先检查当前还在不在 TikTok, 在 → BACK 关 panel; 不在 → 跳过 BACK 等下一轮 ensureInTikTok 处理
+        if (isInTiktok()) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            delay(1000)
+        }
 
         // 4. 跳到下一个视频
         goToNextVideoInTask()
         return true
+    }
+
+    /** 当前 rootInActiveWindow 的 packageName 是否是 TikTok */
+    private fun isInTiktok(): Boolean {
+        val pkg = rootInActiveWindow?.packageName?.toString() ?: ""
+        return pkg in TIKTOK_PACKAGES
+    }
+
+    /**
+     * 确保 TikTok 在前台. 如果不是, 主动拉起 TikTok.
+     * 返回 true 表示当前已在 TikTok, 否则 false (拉起失败).
+     */
+    private suspend fun ensureInTikTok(): Boolean {
+        if (isInTiktok()) return true
+        val pkg = rootInActiveWindow?.packageName?.toString() ?: "(null)"
+        addLog("⚠️ 当前不在 TikTok (pkg=$pkg), 拉起 TikTok")
+        for (p in TIKTOK_PACKAGES) {
+            val intent = packageManager.getLaunchIntentForPackage(p)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try {
+                    startActivity(intent)
+                    delay(2500)
+                    if (isInTiktok()) {
+                        addLog("✅ 已拉回 TikTok")
+                        return true
+                    }
+                } catch (e: Exception) {
+                    addLog("⚠️ 启动 $p 失败: ${e.message}")
+                }
+            }
+        }
+        addLog("❌ 没装 TikTok, 或拉起失败")
+        return false
+    }
+
+    /**
+     * 发完私信回评论 panel. 模式 A (profile 底部直发) 当前在 profile/聊天请求页;
+     * 模式 B (走消息按钮进聊天) 内部已 BACK 1 次回到 profile.
+     * 循环 BACK 直到 (a) 当前页面看起来是评论 panel, 或 (b) 退出了 TikTok 就立刻拉回,
+     * 或 (c) BACK 满 4 次还没回到评论 panel 就退出.
+     */
+    private suspend fun backToCommentPanel() {
+        for (back in 1..4) {
+            // 退出 TikTok 立刻拉回
+            if (!isInTiktok()) {
+                addLog("⚠️ BACK 退出了 TikTok, 拉回")
+                ensureInTikTok()
+                return
+            }
+            val r = rootInActiveWindow ?: return
+            // 评论 panel 标志: "条评论"/"添加评论" 文本
+            val isCommentPanel = AccessibilityUtils.findNodeByText(r, "添加评论", true) != null
+                || AccessibilityUtils.findNodeByText(r, "条评论", true) != null
+                || AccessibilityUtils.findNodeByText(r, "Add comment", true) != null
+                || AccessibilityUtils.findNodeByText(r, "comments", true) != null
+            if (isCommentPanel) {
+                addLog("✅ 回到评论 panel (BACK $back 次)")
+                return
+            }
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            delay(700)
+        }
+        addLog("⚠️ BACK 4 次仍未回到评论 panel, 继续后续逻辑")
     }
 
     /**
@@ -469,12 +538,30 @@ class TikTokAccessibilityService : AccessibilityService() {
 
         // 搜索模式: 上滑切下一条搜索相关视频
         repeat(5) { attempt ->
+            // 每次上滑前确保还在 TikTok (BACK 链可能把 TikTok 退掉了)
+            if (!ensureInTikTok()) {
+                addLog("❌ 无法回到 TikTok, 跳过本轮")
+                return
+            }
             addLog("⬆ 上滑切下一条 (#${attempt + 1})")
             swipeUpInVideoArea()
             delay(2800)
 
+            // 上滑后再次确认在 TikTok 视频流
+            if (!isInTiktok()) {
+                addLog("⚠️ 上滑后离开了 TikTok, 拉回再试")
+                ensureInTikTok()
+                return
+            }
+
             val root = rootInActiveWindow ?: return
             val sig = currentVideoSignature(root)
+            // 关键: 当前若是判官TK助手主界面/Launcher等, 签名里会含 "判官TK助手" 等关键字, 跳过
+            if (looksLikeOwnApp(sig)) {
+                addLog("⚠️ 上滑落到非 TikTok 页面(签名: ${sig.take(40)}), 拉回 TikTok")
+                ensureInTikTok()
+                return
+            }
             if (sig.isBlank()) {
                 addLog("ℹ️ 视频签名为空, 视为新视频")
                 return
@@ -490,6 +577,17 @@ class TikTokAccessibilityService : AccessibilityService() {
         // 上滑 5 次还在已处理视频 → BACK 回搜索结果, 滚动后选下一个
         addLog("⬅ 上滑无效, BACK 回搜索结果选下一个卡片")
         backToSearchResultsAndPickNext()
+    }
+
+    /** 检测签名文字是不是判官TK助手主界面/Launcher 等非 TikTok 页面 */
+    private fun looksLikeOwnApp(sig: String): Boolean {
+        if (sig.isBlank()) return false
+        val markers = listOf(
+            "判官TK助手", "判官", "无障碍服务", "服务已启用", "免责声明",
+            "启动脚本", "开启悬浮", "脚本设置", "话术管理", "实时统计", "运行日志",
+            "本作品仅供学习"
+        )
+        return markers.any { sig.contains(it) }
     }
 
     /**
@@ -991,6 +1089,12 @@ class TikTokAccessibilityService : AccessibilityService() {
             checkPaused()
             val root = rootInActiveWindow ?: return matched
 
+            // 关键: 退出 TikTok 立即停止扫描, 不要在判官TK助手主界面/launcher 上误识别评论
+            if (!isInTiktok()) {
+                addLog("⚠️ 评论扫描中离开了 TikTok, 停止当前视频扫描")
+                return matched
+            }
+
             val commentItems = collectCommentItems(root)
             if (commentItems.isEmpty()) {
                 addLog("ℹ️ 暂未找到评论 item，向下滑评论列表")
@@ -1010,6 +1114,13 @@ class TikTokAccessibilityService : AccessibilityService() {
 
                 val hit = keywordHit(text, keywords)
                 if (!hit) {
+                    processedCommentSignatures.add(signature)
+                    continue
+                }
+
+                // 防御: 命中文本如果是判官TK助手主界面的元素, 跳过
+                if (looksLikeOwnApp(text)) {
+                    addLog("⚠️ 命中文本来自非 TikTok 页面, 跳过: ${text.take(30)}")
                     processedCommentSignatures.add(signature)
                     continue
                 }
@@ -1062,19 +1173,9 @@ class TikTokAccessibilityService : AccessibilityService() {
                                 addLog("👤 关注 [总计: ${stats.usersFollowed}]")
                             }
                         }
-                        // 返回评论区 (可能要 BACK 2 次: 聊天界面 → profile → 评论)
-                        performGlobalAction(GLOBAL_ACTION_BACK)
-                        delay(800)
-                        // 检测当前是不是在评论 panel, 不在就再 BACK
-                        val r = rootInActiveWindow
-                        if (r != null) {
-                            val stillProfile = AccessibilityUtils.findNodeByText(r, "关注", false) != null
-                                || AccessibilityUtils.findNodeByText(r, "粉丝", false) != null
-                            if (stillProfile) {
-                                performGlobalAction(GLOBAL_ACTION_BACK)
-                                delay(800)
-                            }
-                        }
+                        // 返回评论 panel: 循环 BACK 直到检测到评论 panel 标志, 最多 4 次
+                        // 关键: 每次 BACK 后检查 packageName, 退出了 TikTok 立刻停止 + 重启 TikTok
+                        backToCommentPanel()
                     } else {
                         addLog("⚠️ 找不到该评论的头像")
                     }
