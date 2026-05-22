@@ -146,7 +146,7 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /** 在每个可中断点调用，暂停时挂起协程直到恢复 */
     private suspend fun checkPaused() {
-        while (isPaused && isActive) {
+        while (isPaused && currentCoroutineContext().isActive) {
             delay(300)
         }
     }
@@ -159,10 +159,10 @@ class TikTokAccessibilityService : AccessibilityService() {
         var batchCount = 0
         val batchSize = Random.nextInt(config.batchMinCount, config.batchMaxCount + 1)
 
-        while (isActive && totalDone < config.totalTaskLimit) {
+        while (currentCoroutineContext().isActive && totalDone < config.totalTaskLimit) {
             // 暂停检查点：如果暂停则挂起等待
             checkPaused()
-            if (!isActive) break
+            if (!currentCoroutineContext().isActive) break
 
             // 执行单次任务
             val didWork = executeOneTask(mode)
