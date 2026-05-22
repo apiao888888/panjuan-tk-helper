@@ -25,9 +25,14 @@ data class TaskConfig(
     // 当前选择的功能
     var currentMode: TaskMode = TaskMode.NURTURE_ACCOUNT,
 
-    // 目标账号（用于 某人粉丝关注/私信、视频评论区系列）
-    var targetUsername: String = "",        // 某人TikTok用户名
-    var targetVideoUrl: String = "",        // 目标视频链接或关键词
+    // 目标账号（功能2/3：某人粉丝关注/私信）
+    var targetUsername: String = "",
+
+    // 视频评论区系列（功能7~10）：TikTok 搜索关键词，如「美女」
+    var searchKeyword: String = "",
+
+    // 评论区匹配关键词：评论内容包含任一关键词才对该用户操作
+    var commentMatchKeywords: MutableList<String> = mutableListOf(),
 
     // ==================== 私信话术 ====================
     // 普通私信话术（随机选1条）

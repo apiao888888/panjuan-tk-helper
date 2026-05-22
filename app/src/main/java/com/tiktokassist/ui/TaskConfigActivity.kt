@@ -19,6 +19,7 @@ class TaskConfigActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityTaskConfigBinding
     private var selectedMode: TaskMode = TaskMode.NURTURE_ACCOUNT
+    private lateinit var commentKeywordAdapter: KeywordAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,6 +32,7 @@ class TaskConfigActivity : AppCompatActivity() {
             finish()
         }
 
+        setupCommentKeywordList()
         setupModeSpinner()
         loadConfig()
         setupListeners()
@@ -67,16 +69,28 @@ class TaskConfigActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupCommentKeywordList() {
+        commentKeywordAdapter = KeywordAdapter(mutableListOf()) { keyword ->
+            commentKeywordAdapter.removeKeyword(keyword)
+            saveConfig()
+        }
+        binding.rvCommentKeywords.layoutManager = LinearLayoutManager(this)
+        binding.rvCommentKeywords.adapter = commentKeywordAdapter
+    }
+
     private fun updateTargetFieldVisibility() {
-        val needsTarget = selectedMode in listOf(
+        val needsUsername = selectedMode in listOf(
             TaskMode.TARGET_FANS_FOLLOW,
-            TaskMode.TARGET_FANS_DM,
+            TaskMode.TARGET_FANS_DM
+        )
+        val needsVideoSearch = selectedMode in listOf(
             TaskMode.VIDEO_COMMENT_FOLLOW,
             TaskMode.VIDEO_COMMENT_DM,
             TaskMode.VIDEO_COMMENT_LIKE,
             TaskMode.VIDEO_COMMENT_REPLY
         )
-        binding.layoutTargetUsername.visibility = if (needsTarget) View.VISIBLE else View.GONE
+        binding.layoutTargetUsername.visibility = if (needsUsername) View.VISIBLE else View.GONE
+        binding.layoutVideoSearch.visibility = if (needsVideoSearch) View.VISIBLE else View.GONE
 
         // 养号功能才显示养号设置（连同标题一起显示/隐藏）
         val isNurture = selectedMode == TaskMode.NURTURE_ACCOUNT
@@ -95,8 +109,13 @@ class TaskConfigActivity : AppCompatActivity() {
         binding.spinnerMode.setSelection(config.currentMode.index - 1)
         updateTargetFieldVisibility()
 
-        // 目标账号
+        // 目标账号 / 视频搜索
         binding.etTargetUsername.setText(config.targetUsername)
+        binding.etSearchKeyword.setText(config.searchKeyword)
+        val kwList = commentKeywordAdapter.getKeywords()
+        kwList.clear()
+        kwList.addAll(config.commentMatchKeywords)
+        commentKeywordAdapter.notifyDataSetChanged()
 
         // 超级话术
         binding.switchSuperDm.isChecked = config.superDmEnabled
@@ -143,10 +162,35 @@ class TaskConfigActivity : AppCompatActivity() {
                 .putExtra("tab", "comment"))
         }
 
+        binding.btnAddCommentKeyword.setOnClickListener {
+            showAddKeywordDialog()
+        }
+
         binding.btnSave.setOnClickListener {
             saveConfig()
             Toast.makeText(this, "✅ 配置已保存", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showAddKeywordDialog() {
+        val input = EditText(this).apply {
+            hint = "例如：合作、咨询、怎么买"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("添加评论匹配关键词")
+            .setMessage("评论内容包含该词时，才会对该用户关注/私信")
+            .setView(input)
+            .setPositiveButton("添加") { _, _ ->
+                val kw = input.text.toString().trim()
+                if (kw.isNotEmpty()) {
+                    commentKeywordAdapter.addKeyword(kw)
+                    saveConfig()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun updateSuperDmVisibility(enabled: Boolean) {
@@ -160,6 +204,8 @@ class TaskConfigActivity : AppCompatActivity() {
 
         config.currentMode = selectedMode
         config.targetUsername = binding.etTargetUsername.text.toString().trim()
+        config.searchKeyword = binding.etSearchKeyword.text.toString().trim()
+        config.commentMatchKeywords = commentKeywordAdapter.getKeywords()
 
         config.superDmEnabled = binding.switchSuperDm.isChecked
         config.superDmMinCount = binding.etSuperDmMin.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 1

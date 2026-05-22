@@ -11,7 +11,9 @@ import com.tiktokassist.model.TaskConfig
 import com.tiktokassist.model.TaskMode
 import com.tiktokassist.model.TaskStats
 import com.tiktokassist.utils.AccessibilityUtils
+import com.tiktokassist.utils.CommentMatcher
 import com.tiktokassist.utils.PrefsManager
+import com.tiktokassist.utils.TikTokNavigator
 import com.tiktokassist.utils.UiDumper
 import kotlinx.coroutines.*
 import kotlin.random.Random
@@ -44,6 +46,13 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     // 暂停控制
     @Volatile private var isPaused = false
+
+    // 视频评论区任务状态（搜索 → 逐视频 → 扫评论 → 匹配关键词）
+    private var videoSearchReady = false
+    private var videoOpenedFromSearch = false
+    private val processedCommentUsers = mutableSetOf<String>()
+    private var commentScrollFailCount = 0
+    private var videosSkipped = 0
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -81,7 +90,13 @@ class TikTokAccessibilityService : AccessibilityService() {
         isPaused = false
         stats = TaskStats(currentMode = mode, startTime = System.currentTimeMillis())
         logLines.clear()
+        resetVideoCommentFlowState()
         addLog("▶ 启动：${mode.displayName}")
+        if (mode.index in 7..10) {
+            val kw = config.searchKeyword.ifBlank { "（未设置，请在脚本设置填写搜索关键词）" }
+            val matchKw = config.commentMatchKeywords.filter { it.isNotBlank() }
+            addLog("🔍 搜索词: $kw | 评论匹配: ${matchKw.joinToString("、").ifBlank { "未设置" }}")
+        }
 
         taskJob?.cancel()
         taskJob = serviceScope.launch {
@@ -367,40 +382,119 @@ class TikTokAccessibilityService : AccessibilityService() {
         return followed
     }
 
-    // ==================== 功能7/8/9/10：视频评论区 ====================
+    // ==================== 功能7/8/9/10：视频评论区（搜索→逐视频→评论关键词匹配） ====================
 
+    private fun resetVideoCommentFlowState() {
+        videoSearchReady = false
+        videoOpenedFromSearch = false
+        processedCommentUsers.clear()
+        commentScrollFailCount = 0
+        videosSkipped = 0
+    }
+
+    /**
+     * 完整流程：
+     * 1. 用 searchKeyword 在 TikTok 搜索（如「美女」）
+     * 2. 打开搜索结果视频，逐个视频处理
+     * 3. 打开评论区，找评论内容含 commentMatchKeywords 的用户
+     * 4. 点赞/回复/关注/私信后返回评论区继续找
+     * 5. 当前视频评论扫完 → 滑到下一个视频继续
+     */
     private suspend fun doVideoCommentAction(
         follow: Boolean, dm: Boolean, like: Boolean, reply: Boolean
     ): Boolean {
-        if (currentPackage !in TIKTOK_PACKAGES) return false
-        val root = rootInActiveWindow ?: return false
-
-        // 打开评论区
-        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "Comment")
-            ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
-
-        if (commentBtn != null) {
-            AccessibilityUtils.clickNode(commentBtn)
-            delay(1500)
+        if (currentPackage !in TIKTOK_PACKAGES) {
+            addLog("⚠️ 请先打开 TikTok 再启动脚本")
+            return false
         }
 
-        val commentRoot = rootInActiveWindow ?: return false
+        val keyword = config.searchKeyword.trim()
+        if (keyword.isEmpty()) {
+            addLog("⚠️ 请在「脚本设置」填写 TikTok 搜索关键词")
+            return false
+        }
 
-        // 获取第一个未处理的评论用户节点
-        val commentUserNode = findFirstCommentUser(commentRoot) ?: return false
+        val matchKeywords = config.commentMatchKeywords.map { it.trim() }.filter { it.isNotEmpty() }
+        if (matchKeywords.isEmpty()) {
+            addLog("⚠️ 请添加至少一个「评论匹配关键词」")
+            return false
+        }
+
+        // ① 搜索关键词
+        if (!videoSearchReady) {
+            addLog("🔍 正在搜索: $keyword")
+            if (!TikTokNavigator.performSearch(this, keyword, screenWidth, screenHeight)) {
+                addLog("⚠️ 未能打开搜索，请手动进入 TikTok 搜索页后重试")
+                return false
+            }
+            videoSearchReady = true
+            addLog("✅ 搜索完成，准备打开视频…")
+            delay(500)
+            return false
+        }
+
+        // ② 打开第一个视频
+        if (!videoOpenedFromSearch) {
+            if (!TikTokNavigator.openFirstVideoFromSearch(this, screenWidth, screenHeight)) {
+                addLog("⚠️ 未能打开视频，请手动点开一条搜索结果")
+                return false
+            }
+            videoOpenedFromSearch = true
+            processedCommentUsers.clear()
+            commentScrollFailCount = 0
+            addLog("📺 已进入视频，开始扫描评论区…")
+            delay(1500)
+            return false
+        }
+
+        var root = rootInActiveWindow ?: return false
+
+        // ③ 打开评论区
+        if (!TikTokNavigator.isCommentPanelOpen(root)) {
+            if (!TikTokNavigator.openCommentPanel(root)) {
+                addLog("⚠️ 未找到评论按钮，切换下一个视频")
+                goToNextSearchVideo()
+                return false
+            }
+            delay(1500)
+            root = rootInActiveWindow ?: return false
+        }
+
+        // ④ 查找匹配关键词的评论
+        val match = CommentMatcher.findFirstMatch(root, matchKeywords, processedCommentUsers)
+        if (match == null) {
+            if (commentScrollFailCount < 12) {
+                TikTokNavigator.scrollCommentList(this, screenWidth, screenHeight)
+                commentScrollFailCount++
+                delay(1200)
+                return false
+            }
+            addLog("📭 本视频评论已扫完（已处理 ${processedCommentUsers.size} 人），下一个视频")
+            closeCommentPanelIfOpen()
+            goToNextSearchVideo()
+            return false
+        }
+
+        commentScrollFailCount = 0
+        processedCommentUsers.add(match.userKey)
+        stats.keywordMatches++
+        addLog("🎯 命中评论「${match.commentText.take(24)}…」")
+
+        val row = match.rowNode
+        var didWork = false
 
         if (like) {
-            // 点赞该条评论
-            val likeNode = findCommentLikeBtn(commentUserNode)
-            if (likeNode != null) {
-                AccessibilityUtils.clickNode(likeNode)
+            val likeNode = findCommentLikeBtn(row)
+            if (likeNode != null && AccessibilityUtils.clickNode(likeNode)) {
                 stats.likesGiven++
                 addLog("❤️ 评论区点赞 [总计: ${stats.likesGiven}]")
+                didWork = true
+                delay(400)
             }
         }
 
         if (reply && config.replyTemplates.isNotEmpty()) {
-            val replyBtn = findCommentReplyBtn(commentUserNode)
+            val replyBtn = findCommentReplyBtn(row)
             if (replyBtn != null) {
                 AccessibilityUtils.clickNode(replyBtn)
                 delay(800)
@@ -414,47 +508,71 @@ class TikTokAccessibilityService : AccessibilityService() {
                     delay(500)
                     val postBtn = AccessibilityUtils.findNodeByText(rootInActiveWindow, "Post", false)
                         ?: AccessibilityUtils.findNodeByDescription(rootInActiveWindow, "Post")
-                    postBtn?.let {
-                        AccessibilityUtils.clickNode(it)
+                    if (postBtn != null && AccessibilityUtils.clickNode(postBtn)) {
                         stats.repliesSent++
                         addLog("💬 评论区回复 [总计: ${stats.repliesSent}]")
+                        didWork = true
+                        delay(600)
                     }
                 }
+                ensureBackToCommentPanel()
             }
         }
 
         if (follow || dm) {
-            // 点击评论者头像进入主页
-            val avatarNode = findCommentAvatar(commentUserNode)
-            if (avatarNode != null) {
-                AccessibilityUtils.clickNode(avatarNode)
-                delay(2000)
-                val profileRoot = rootInActiveWindow ?: return true
-
-                if (follow) {
-                    if (tryFollowUser(profileRoot)) {
-                        stats.usersFollowed++
-                        addLog("👤 评论区关注 [总计: ${stats.usersFollowed}]")
-                    }
+            AccessibilityUtils.clickNode(match.avatarNode)
+            delay(2000)
+            val profileRoot = rootInActiveWindow
+            if (profileRoot != null) {
+                if (follow && tryFollowUser(profileRoot)) {
+                    stats.usersFollowed++
+                    addLog("👤 关注 [总计: ${stats.usersFollowed}]")
+                    didWork = true
                 }
-
                 if (dm) {
                     val sent = sendSuperDm(profileRoot)
                     if (sent > 0) {
                         stats.dmsSent += sent
-                        addLog("✉️ 评论区私信×$sent [总计: ${stats.dmsSent}]")
+                        addLog("✉️ 私信×$sent [总计: ${stats.dmsSent}]")
+                        didWork = true
                     }
                 }
-
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                delay(1000)
             }
+            ensureBackToCommentPanel()
         }
 
-        // 关闭评论区
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        delay(600)
-        return true
+        if (!didWork) {
+            addLog("⚠️ 未能对该用户完成操作，继续找下一条评论")
+        }
+        return didWork
+    }
+
+    private suspend fun closeCommentPanelIfOpen() {
+        val root = rootInActiveWindow ?: return
+        if (TikTokNavigator.isCommentPanelOpen(root)) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            delay(700)
+        }
+    }
+
+    private suspend fun goToNextSearchVideo() {
+        closeCommentPanelIfOpen()
+        delay(500)
+        TikTokNavigator.swipeToNextVideo(this, screenWidth, screenHeight)
+        videosSkipped++
+        processedCommentUsers.clear()
+        commentScrollFailCount = 0
+        delay(2000)
+        addLog("⏭ 已切换到第 ${videosSkipped + 1} 个视频")
+    }
+
+    private suspend fun ensureBackToCommentPanel() {
+        repeat(3) {
+            val root = rootInActiveWindow ?: return
+            if (TikTokNavigator.isCommentPanelOpen(root)) return
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            delay(700)
+        }
     }
 
     // ==================== 超级话术核心逻辑 ====================
@@ -678,6 +796,7 @@ class TikTokAccessibilityService : AccessibilityService() {
             putExtra("users_followed", stats.usersFollowed)
             putExtra("dms_sent", stats.dmsSent)
             putExtra("replies_sent", stats.repliesSent)
+            putExtra("keyword_matches", stats.keywordMatches)
             putExtra("total_tasks_done", stats.totalTasksDone)
             putExtra("cycle_count", stats.cycleCount)
             putExtra("is_running", isRunning)

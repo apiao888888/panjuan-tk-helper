@@ -123,7 +123,7 @@
                             android:id="@+id/etTargetUsername"
                             android:layout_width="match_parent"
                             android:layout_height="50dp"
-                            android:hint="输入 TikTok 用户名或视频链接"
+                            android:hint="输入 TikTok 用户名（不含@）"
                             android:textColor="@color/text_primary"
                             android:textColorHint="@color/text_hint"
                             android:textSize="14sp"
@@ -131,6 +131,80 @@
                             android:paddingStart="12dp"
                             android:paddingEnd="12dp"
                             android:inputType="text" />
+                    </LinearLayout>
+
+                    <!-- 视频评论区功能：搜索关键词 + 评论匹配词 -->
+                    <LinearLayout
+                        android:id="@+id/layoutVideoSearch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="14dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="TikTok 搜索关键词"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:layout_marginBottom="6dp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="脚本会自动搜索该词，并逐个打开视频扫描评论区"
+                            android:textColor="@color/text_help"
+                            android:textSize="11sp"
+                            android:layout_marginBottom="8dp" />
+
+                        <EditText
+                            android:id="@+id/etSearchKeyword"
+                            android:layout_width="match_parent"
+                            android:layout_height="50dp"
+                            android:hint="例如：美女、健身、美食"
+                            android:textColor="@color/text_primary"
+                            android:textColorHint="@color/text_hint"
+                            android:textSize="14sp"
+                            android:background="@drawable/bg_input"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
+                            android:inputType="text" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="评论匹配关键词"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:layout_marginTop="14dp"
+                            android:layout_marginBottom="6dp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="评论里包含以下任一关键词 → 点头像 → 关注/私信，然后继续找下一条"
+                            android:textColor="@color/text_help"
+                            android:textSize="11sp"
+                            android:layout_marginBottom="8dp" />
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/rvCommentKeywords"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:nestedScrollingEnabled="false"
+                            android:layout_marginBottom="8dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnAddCommentKeyword"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:text="+ 添加评论关键词"
+                            android:textSize="13sp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            app:cornerRadius="8dp"
+                            app:strokeColor="@color/accent_orange"
+                            android:textColor="@color/accent_orange" />
                     </LinearLayout>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
