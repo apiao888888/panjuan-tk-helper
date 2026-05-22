@@ -155,7 +155,7 @@ class LicenseActivity : AppCompatActivity() {
             .setView(input)
             .setPositiveButton("确认") { _, _ ->
                 val pwd = input.text.toString()
-                if (pwd == "panjuan2026admin") {  // 管理员密码（可自行修改）
+                if (pwd == "PG53719") {  // 管理员密码（可自行修改）
                     startActivity(Intent(this, KeygenActivity::class.java))
                 } else {
                     Toast.makeText(this, "密码错误", Toast.LENGTH_SHORT).show()
