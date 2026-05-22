@@ -1092,9 +1092,28 @@ class TikTokAccessibilityService : AccessibilityService() {
             delay(500)
         }
         if (commentBtn == null) {
-            // 8 秒后仍找不到 = 当前确实不在视频播放页. 不要盲 tap.
-            addLog("⚠️ 8s 内未找到评论按钮, 当前不像视频播放页")
-            return false
+            // 8 秒后仍找不到节点. 判断当前是否在 TikTok 视频播放页 (package 正确):
+            // 若在 TikTok 包内, 很可能只是节点描述不匹配 → 用坐标兜底 tap 右侧评论按钮位置
+            // 若已离开 TikTok → 直接返回 false
+            if (!isInTiktok()) {
+                addLog("⚠️ 8s 未找到评论按钮且已离开 TikTok, 跳过")
+                return false
+            }
+            addLog("⚠️ 8s 未找到评论按钮节点, 用坐标兜底 tap 评论区域")
+            // 评论按钮在右侧操作栏: x≈92%, y≈62% (根据截图实测调整)
+            AccessibilityUtils.tapAt(this, screenWidth * 0.92f, screenHeight * 0.62f)
+            delay(2500)
+            // 检查是否打开了评论面板 (有 collectCommentItems 能识别的 scrollable)
+            val root2 = rootInActiveWindow
+            if (root2 != null) {
+                val items = collectCommentItems(root2)
+                if (items.isEmpty()) {
+                    addLog("⚠️ 坐标 tap 后仍未打开评论面板, 跳过本视频")
+                    return false
+                }
+                addLog("💬 坐标 tap 后评论面板已打开 (${items.size} 条)")
+            }
+            return true
         }
         addLog("💬 tap 评论按钮")
         tapNodeCenter(commentBtn)
@@ -1132,18 +1151,17 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
     }
 
-    /** 验证: 节点是右侧操作栏中下部的可点击按钮 */
+    /** 验证: 节点是右侧操作栏中下部的按钮 (不强求 isClickable, TikTok 部分版本 clickable=false) */
     private fun isValidCommentButton(node: AccessibilityNodeInfo): Boolean {
-        if (!node.isClickable) return false
         val r = android.graphics.Rect()
         node.getBoundsInScreen(r)
         val cx = r.exactCenterX()
         val cy = r.exactCenterY()
-        // 必须在屏幕右侧 (避免左下角弹幕里同名描述节点)
+        // 必须在屏幕右侧 60% 以右 (避免左下角弹幕里同名描述节点)
         // 必须在屏幕中下部 (避免顶部 tab/标题)
-        return cx > screenWidth * 0.70f
-            && cy > screenHeight * 0.30f
-            && cy < screenHeight * 0.90f
+        return cx > screenWidth * 0.60f
+            && cy > screenHeight * 0.25f
+            && cy < screenHeight * 0.92f
     }
 
     /**
