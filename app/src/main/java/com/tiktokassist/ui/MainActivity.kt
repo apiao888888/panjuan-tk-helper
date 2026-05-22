@@ -207,13 +207,12 @@ class MainActivity : AppCompatActivity() {
         val follows = intent.getIntExtra("users_followed", 0)
         val dms = intent.getIntExtra("dms_sent", 0)
         val replies = intent.getIntExtra("replies_sent", 0)
-        val keywordHits = intent.getIntExtra("keyword_matches", 0)
         val total = intent.getIntExtra("total_tasks_done", 0)
         val cycle = intent.getIntExtra("cycle_count", 0)
         val isRunning = intent.getBooleanExtra("is_running", false)
 
         binding.tvStatsLine1.text = "视频: $videos  |  点赞: $likes  |  评论: $comments  |  收藏: ${TikTokAccessibilityService.stats.favoritesAdded}"
-        binding.tvStatsLine2.text = "关注: $follows  |  私信: $dms  |  回复: $replies  |  命中: $keywordHits"
+        binding.tvStatsLine2.text = "关注: $follows  |  私信: $dms  |  回复: $replies"
         binding.tvStatsLine3.text = "总任务: $total  |  循环次数: $cycle  |  模式: $modeName"
 
         val isPaused = intent.getBooleanExtra("is_paused", false)

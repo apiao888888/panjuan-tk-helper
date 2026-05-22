@@ -103,6 +103,7 @@
                         android:paddingStart="12dp"
                         android:paddingEnd="12dp" />
 
+                    <!-- 目标来源选择 -->
                     <LinearLayout
                         android:id="@+id/layoutTargetUsername"
                         android:layout_width="match_parent"
@@ -114,7 +115,25 @@
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="目标账号"
+                            android:text="目标来源"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:layout_marginBottom="8dp" />
+
+                        <Spinner
+                            android:id="@+id/spinnerTargetSource"
+                            android:layout_width="match_parent"
+                            android:layout_height="50dp"
+                            android:background="@drawable/bg_spinner"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
+                            android:layout_marginBottom="14dp" />
+
+                        <TextView
+                            android:id="@+id/tvTargetInputLabel"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="搜索关键词"
                             android:textColor="@color/text_label"
                             android:textSize="14sp"
                             android:layout_marginBottom="8dp" />
@@ -123,7 +142,7 @@
                             android:id="@+id/etTargetUsername"
                             android:layout_width="match_parent"
                             android:layout_height="50dp"
-                            android:hint="输入 TikTok 用户名（不含@）"
+                            android:hint="例如：美女、穿搭、宠物"
                             android:textColor="@color/text_primary"
                             android:textColorHint="@color/text_hint"
                             android:textSize="14sp"
@@ -131,80 +150,122 @@
                             android:paddingStart="12dp"
                             android:paddingEnd="12dp"
                             android:inputType="text" />
-                    </LinearLayout>
 
-                    <!-- 视频评论区功能：搜索关键词 + 评论匹配词 -->
-                    <LinearLayout
-                        android:id="@+id/layoutVideoSearch"
+                        <TextView
+                            android:id="@+id/tvTargetInputHelp"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="脚本会自动打开 TikTok 搜索并遍历视频"
+                            android:textColor="@color/text_help"
+                            android:textSize="11sp"
+                            android:layout_marginTop="6dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ==================== 区块：评论关键词匹配 ==================== -->
+            <LinearLayout
+                android:id="@+id/headerCommentKeyword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp"
+                android:visibility="gone">
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="20dp"
+                    android:background="@color/accent_purple"
+                    android:layout_marginEnd="8dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="评论关键词筛选"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardCommentKeyword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_dark"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:layout_marginTop="14dp"
-                        android:visibility="gone">
+                        android:text="评论里包含这些词的用户才会被关注/私信"
+                        android:textColor="@color/text_help"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="10dp" />
 
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="TikTok 搜索关键词"
-                            android:textColor="@color/text_label"
-                            android:textSize="14sp"
-                            android:layout_marginBottom="6dp" />
+                    <EditText
+                        android:id="@+id/etCommentKeywords"
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:gravity="top|start"
+                        android:hint="一行一个关键词，例如：&#10;微信&#10;想要&#10;加我&#10;wechat"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_hint"
+                        android:textSize="14sp"
+                        android:background="@drawable/bg_input"
+                        android:padding="12dp"
+                        android:inputType="textMultiLine"
+                        android:lineSpacingMultiplier="1.2" />
 
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="脚本会自动搜索该词，并逐个打开视频扫描评论区"
-                            android:textColor="@color/text_help"
-                            android:textSize="11sp"
-                            android:layout_marginBottom="8dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="留空则处理所有评论；一行一个，不区分大小写"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginBottom="14dp" />
+
+                    <!-- 每视频最多处理多少条 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="每个视频最多处理"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
                         <EditText
-                            android:id="@+id/etSearchKeyword"
-                            android:layout_width="match_parent"
-                            android:layout_height="50dp"
-                            android:hint="例如：美女、健身、美食"
+                            android:id="@+id/etCommentMaxPerVideo"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="5"
+                            android:inputType="number"
                             android:textColor="@color/text_primary"
-                            android:textColorHint="@color/text_hint"
-                            android:textSize="14sp"
-                            android:background="@drawable/bg_input"
-                            android:paddingStart="12dp"
-                            android:paddingEnd="12dp"
-                            android:inputType="text" />
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
 
                         <TextView
-                            android:layout_width="match_parent"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="评论匹配关键词"
-                            android:textColor="@color/text_label"
-                            android:textSize="14sp"
-                            android:layout_marginTop="14dp"
-                            android:layout_marginBottom="6dp" />
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="评论里包含以下任一关键词 → 点头像 → 关注/私信，然后继续找下一条"
-                            android:textColor="@color/text_help"
-                            android:textSize="11sp"
-                            android:layout_marginBottom="8dp" />
-
-                        <androidx.recyclerview.widget.RecyclerView
-                            android:id="@+id/rvCommentKeywords"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:nestedScrollingEnabled="false"
-                            android:layout_marginBottom="8dp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnAddCommentKeyword"
-                            android:layout_width="match_parent"
-                            android:layout_height="44dp"
-                            android:text="+ 添加评论关键词"
-                            android:textSize="13sp"
-                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                            app:cornerRadius="8dp"
-                            app:strokeColor="@color/accent_orange"
-                            android:textColor="@color/accent_orange" />
+                            android:text="  条匹配评论后切换下一个视频"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
                     </LinearLayout>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>

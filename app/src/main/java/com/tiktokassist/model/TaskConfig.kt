@@ -19,20 +19,39 @@ enum class TaskMode(val displayName: String, val index: Int) {
     }
 }
 
+// ==================== 目标来源类型 ====================
+enum class TargetSourceType(val displayName: String) {
+    SEARCH_KEYWORD("搜索关键词"),       // 输入关键词，脚本去 TikTok 搜索并遍历结果
+    USERNAME("TikTok 用户名"),         // 进入指定用户主页/粉丝列表
+    VIDEO_URL("视频链接"),             // 直接打开某个视频
+    CURRENT_VIDEO("当前已打开的视频");  // 不导航，直接处理当前视频
+}
+
 // ==================== 任务总配置 ====================
 data class TaskConfig(
 
     // 当前选择的功能
     var currentMode: TaskMode = TaskMode.NURTURE_ACCOUNT,
 
-    // 目标账号（功能2/3：某人粉丝关注/私信）
-    var targetUsername: String = "",
+    // 目标来源类型（搜索关键词 / 用户名 / 视频链接 / 当前视频）
+    var targetSourceType: TargetSourceType = TargetSourceType.SEARCH_KEYWORD,
 
-    // 视频评论区系列（功能7~10）：TikTok 搜索关键词，如「美女」
-    var searchKeyword: String = "",
+    // 用户输入的目标内容（按 targetSourceType 解释）
+    var targetInput: String = "",          // 搜索关键词 或 用户名 或 视频链接
 
-    // 评论区匹配关键词：评论内容包含任一关键词才对该用户操作
-    var commentMatchKeywords: MutableList<String> = mutableListOf(),
+    // 旧字段（保留兼容已有持久化数据）
+    var targetUsername: String = "",        // 某人TikTok用户名
+    var targetVideoUrl: String = "",        // 目标视频链接或关键词
+
+    // ==================== 评论关键词匹配（功能7~10）====================
+    // 评论里包含这些关键词的用户，才会被关注/私信/点赞/回复；空则全部处理
+    var commentMatchKeywords: MutableList<String> = mutableListOf(
+        "vu", "wechat", "微信", "想要", "需要", "加我", "dm", "私信"
+    ),
+    // 每个视频最多处理多少条匹配评论后就翻下一个视频
+    var commentMaxPerVideo: Int = 5,
+    // 是否需要全部命中关键词（true）还是命中任一即可（false）
+    var commentRequireAll: Boolean = false,
 
     // ==================== 私信话术 ====================
     // 普通私信话术（随机选1条）

@@ -7,13 +7,12 @@ import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.tiktokassist.model.TargetSourceType
 import com.tiktokassist.model.TaskConfig
 import com.tiktokassist.model.TaskMode
 import com.tiktokassist.model.TaskStats
 import com.tiktokassist.utils.AccessibilityUtils
-import com.tiktokassist.utils.CommentMatcher
 import com.tiktokassist.utils.PrefsManager
-import com.tiktokassist.utils.TikTokNavigator
 import com.tiktokassist.utils.UiDumper
 import kotlinx.coroutines.*
 import kotlin.random.Random
@@ -47,12 +46,10 @@ class TikTokAccessibilityService : AccessibilityService() {
     // 暂停控制
     @Volatile private var isPaused = false
 
-    // 视频评论区任务状态（搜索 → 逐视频 → 扫评论 → 匹配关键词）
-    private var videoSearchReady = false
-    private var videoOpenedFromSearch = false
-    private val processedCommentUsers = mutableSetOf<String>()
-    private var commentScrollFailCount = 0
-    private var videosSkipped = 0
+    // 评论区任务状态：是否已经导航到目标视频
+    private var navigatedToTarget = false
+    // 已处理过的评论用户文本（用于去重，避免重复关注/私信同一人）
+    private val processedCommentSignatures = HashSet<String>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -88,14 +85,25 @@ class TikTokAccessibilityService : AccessibilityService() {
         config = PrefsManager.loadConfig(this)
         config.currentMode = mode
         isPaused = false
+        navigatedToTarget = false
+        processedCommentSignatures.clear()
         stats = TaskStats(currentMode = mode, startTime = System.currentTimeMillis())
         logLines.clear()
-        resetVideoCommentFlowState()
         addLog("▶ 启动：${mode.displayName}")
-        if (mode.index in 7..10) {
-            val kw = config.searchKeyword.ifBlank { "（未设置，请在脚本设置填写搜索关键词）" }
-            val matchKw = config.commentMatchKeywords.filter { it.isNotBlank() }
-            addLog("🔍 搜索词: $kw | 评论匹配: ${matchKw.joinToString("、").ifBlank { "未设置" }}")
+        if (mode in listOf(
+                TaskMode.VIDEO_COMMENT_FOLLOW,
+                TaskMode.VIDEO_COMMENT_DM,
+                TaskMode.VIDEO_COMMENT_LIKE,
+                TaskMode.VIDEO_COMMENT_REPLY
+            )) {
+            val src = config.targetSourceType.displayName
+            val input = config.targetInput.ifBlank { config.targetUsername }
+            addLog("🎯 来源: $src${if (input.isNotBlank()) " · $input" else ""}")
+            if (config.commentMatchKeywords.isNotEmpty()) {
+                addLog("🔍 评论关键词: ${config.commentMatchKeywords.joinToString("、")}")
+            } else {
+                addLog("🔍 评论关键词: (全部)")
+            }
         }
 
         taskJob?.cancel()
@@ -382,197 +390,382 @@ class TikTokAccessibilityService : AccessibilityService() {
         return followed
     }
 
-    // ==================== 功能7/8/9/10：视频评论区（搜索→逐视频→评论关键词匹配） ====================
-
-    private fun resetVideoCommentFlowState() {
-        videoSearchReady = false
-        videoOpenedFromSearch = false
-        processedCommentUsers.clear()
-        commentScrollFailCount = 0
-        videosSkipped = 0
-    }
+    // ==================== 功能7/8/9/10：视频评论区（新版：搜索 + 关键词匹配）====================
 
     /**
-     * 完整流程：
-     * 1. 用 searchKeyword 在 TikTok 搜索（如「美女」）
-     * 2. 打开搜索结果视频，逐个视频处理
-     * 3. 打开评论区，找评论内容含 commentMatchKeywords 的用户
-     * 4. 点赞/回复/关注/私信后返回评论区继续找
-     * 5. 当前视频评论扫完 → 滑到下一个视频继续
+     * 整体流程（一次"任务"对应处理完一个视频）：
+     * 1. 首次进入：根据 targetSourceType 导航到目标
+     *    - SEARCH_KEYWORD: 打开搜索 → 输入关键词 → 进入第一个视频
+     *    - VIDEO_URL: 暂不实现深链，等价于 CURRENT_VIDEO
+     *    - CURRENT_VIDEO: 直接处理当前视频
+     * 2. 打开评论区
+     * 3. 滑动扫描评论，找匹配关键词的；命中则点头像 → 关注/私信 → 返回
+     * 4. 达到上限或扫完，关闭评论区 → 滑下一条视频
      */
     private suspend fun doVideoCommentAction(
         follow: Boolean, dm: Boolean, like: Boolean, reply: Boolean
     ): Boolean {
         if (currentPackage !in TIKTOK_PACKAGES) {
-            addLog("⚠️ 请先打开 TikTok 再启动脚本")
-            return false
-        }
-
-        val keyword = config.searchKeyword.trim()
-        if (keyword.isEmpty()) {
-            addLog("⚠️ 请在「脚本设置」填写 TikTok 搜索关键词")
-            return false
-        }
-
-        val matchKeywords = config.commentMatchKeywords.map { it.trim() }.filter { it.isNotEmpty() }
-        if (matchKeywords.isEmpty()) {
-            addLog("⚠️ 请添加至少一个「评论匹配关键词」")
-            return false
-        }
-
-        // ① 搜索关键词
-        if (!videoSearchReady) {
-            addLog("🔍 正在搜索: $keyword")
-            if (!TikTokNavigator.performSearch(this, keyword, screenWidth, screenHeight)) {
-                addLog("⚠️ 未能打开搜索，请手动进入 TikTok 搜索页后重试")
-                return false
-            }
-            videoSearchReady = true
-            addLog("✅ 搜索完成，准备打开视频…")
-            delay(500)
-            return false
-        }
-
-        // ② 打开第一个视频
-        if (!videoOpenedFromSearch) {
-            if (!TikTokNavigator.openFirstVideoFromSearch(this, screenWidth, screenHeight)) {
-                addLog("⚠️ 未能打开视频，请手动点开一条搜索结果")
-                return false
-            }
-            videoOpenedFromSearch = true
-            processedCommentUsers.clear()
-            commentScrollFailCount = 0
-            addLog("📺 已进入视频，开始扫描评论区…")
+            addLog("⏳ 请先切到 TikTok 应用")
             delay(1500)
             return false
         }
 
+        // 第一次进入时根据来源类型导航
+        if (!navigatedToTarget) {
+            if (!navigateToTarget()) {
+                addLog("⚠️ 导航到目标失败，将处理当前视频")
+            }
+            navigatedToTarget = true
+            delay(2000)
+        }
+
+        // 1. 打开评论区
+        if (!openCommentPanel()) {
+            addLog("⚠️ 找不到评论按钮，滑下一条")
+            swipeToNextVideo()
+            return true
+        }
+
+        // 2. 扫描评论 + 关键词匹配
+        val processedThisVideo = scanCommentsAndAct(follow, dm, like, reply)
+        addLog("📊 本视频处理评论 $processedThisVideo 条")
+
+        // 3. 关闭评论区
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        delay(800)
+
+        // 4. 滑到下一个视频
+        swipeToNextVideo()
+        return true
+    }
+
+    /** 根据 targetSourceType 导航到目标。返回是否成功导航。 */
+    private suspend fun navigateToTarget(): Boolean {
+        val input = config.targetInput.ifBlank { config.targetUsername }
+        return when (config.targetSourceType) {
+            TargetSourceType.SEARCH_KEYWORD -> {
+                if (input.isBlank()) {
+                    addLog("⚠️ 未填写搜索关键词")
+                    false
+                } else {
+                    navigateBySearchKeyword(input)
+                }
+            }
+            TargetSourceType.USERNAME -> {
+                if (input.isBlank()) false
+                else navigateBySearchKeyword("@${input.removePrefix("@")}")
+            }
+            TargetSourceType.VIDEO_URL -> {
+                addLog("ℹ️ 视频链接模式暂未自动跳转，建议先手动打开视频")
+                false
+            }
+            TargetSourceType.CURRENT_VIDEO -> true
+        }
+    }
+
+    /** 通过搜索入口跳到关键词搜索结果，并打开第一个视频 */
+    private suspend fun navigateBySearchKeyword(keyword: String): Boolean {
+        addLog("🔎 搜索关键词: $keyword")
+
+        // 步骤1：从主页（For You）找搜索图标。TikTok 的搜索按钮在顶部右侧，content desc 通常是 "Search"
         var root = rootInActiveWindow ?: return false
+        val searchEntry = AccessibilityUtils.findNodeByDescription(root, "Search")
+            ?: AccessibilityUtils.findNodeByViewId(root, "search_icon")
+            ?: AccessibilityUtils.findNodeByViewId(root, "iv_search")
+        if (searchEntry == null) {
+            addLog("⚠️ 找不到搜索入口，尝试直接处理当前页面")
+            return false
+        }
+        AccessibilityUtils.clickNode(searchEntry)
+        delay(1500)
 
-        // ③ 打开评论区
-        if (!TikTokNavigator.isCommentPanelOpen(root)) {
-            if (!TikTokNavigator.openCommentPanel(root)) {
-                addLog("⚠️ 未找到评论按钮，切换下一个视频")
-                goToNextSearchVideo()
-                return false
-            }
-            delay(1500)
+        // 步骤2：找到搜索输入框
+        root = rootInActiveWindow ?: return false
+        val searchInput = AccessibilityUtils.findNodeByViewId(root, "search_input")
+            ?: AccessibilityUtils.findNodeByViewId(root, "et_search_kw")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Search")
+            ?: findEditableNode(root)
+        if (searchInput == null) {
+            addLog("⚠️ 找不到搜索输入框")
+            return false
+        }
+        AccessibilityUtils.clickNode(searchInput)
+        delay(500)
+        AccessibilityUtils.typeText(searchInput, keyword)
+        delay(800)
+
+        // 步骤3：触发搜索（找 "Search" 按钮或 IME 回车键）
+        root = rootInActiveWindow ?: return false
+        val searchBtn = AccessibilityUtils.findNodeByText(root, "Search", false)
+            ?: AccessibilityUtils.findNodeByDescription(root, "Search", false)
+            ?: AccessibilityUtils.findNodeByViewId(root, "tv_search")
+        if (searchBtn != null) {
+            AccessibilityUtils.clickNode(searchBtn)
+        }
+        delay(2500)
+
+        // 步骤4：在结果页找第一个视频卡片，点击进入
+        root = rootInActiveWindow ?: return false
+        // 优先尝试切到 "Videos" tab
+        val videoTab = AccessibilityUtils.findNodeByText(root, "Videos", false)
+        if (videoTab != null) {
+            AccessibilityUtils.clickNode(videoTab)
+            delay(1200)
             root = rootInActiveWindow ?: return false
         }
 
-        // ④ 查找匹配关键词的评论
-        val match = CommentMatcher.findFirstMatch(root, matchKeywords, processedCommentUsers)
-        if (match == null) {
-            if (commentScrollFailCount < 12) {
-                TikTokNavigator.scrollCommentList(this, screenWidth, screenHeight)
-                commentScrollFailCount++
-                delay(1200)
-                return false
-            }
-            addLog("📭 本视频评论已扫完（已处理 ${processedCommentUsers.size} 人），下一个视频")
-            closeCommentPanelIfOpen()
-            goToNextSearchVideo()
+        val firstVideo = findFirstSearchResultVideo(root)
+        if (firstVideo == null) {
+            addLog("⚠️ 找不到搜索结果视频")
             return false
         }
-
-        commentScrollFailCount = 0
-        processedCommentUsers.add(match.userKey)
-        stats.keywordMatches++
-        addLog("🎯 命中评论「${match.commentText.take(24)}…」")
-
-        val row = match.rowNode
-        var didWork = false
-
-        if (like) {
-            val likeNode = findCommentLikeBtn(row)
-            if (likeNode != null && AccessibilityUtils.clickNode(likeNode)) {
-                stats.likesGiven++
-                addLog("❤️ 评论区点赞 [总计: ${stats.likesGiven}]")
-                didWork = true
-                delay(400)
-            }
-        }
-
-        if (reply && config.replyTemplates.isNotEmpty()) {
-            val replyBtn = findCommentReplyBtn(row)
-            if (replyBtn != null) {
-                AccessibilityUtils.clickNode(replyBtn)
-                delay(800)
-                val replyRoot = rootInActiveWindow
-                val inputField = findCommentInput(replyRoot)
-                if (inputField != null) {
-                    val replyText = config.replyTemplates.random()
-                    AccessibilityUtils.clickNode(inputField)
-                    delay(400)
-                    AccessibilityUtils.typeText(inputField, replyText)
-                    delay(500)
-                    val postBtn = AccessibilityUtils.findNodeByText(rootInActiveWindow, "Post", false)
-                        ?: AccessibilityUtils.findNodeByDescription(rootInActiveWindow, "Post")
-                    if (postBtn != null && AccessibilityUtils.clickNode(postBtn)) {
-                        stats.repliesSent++
-                        addLog("💬 评论区回复 [总计: ${stats.repliesSent}]")
-                        didWork = true
-                        delay(600)
-                    }
-                }
-                ensureBackToCommentPanel()
-            }
-        }
-
-        if (follow || dm) {
-            AccessibilityUtils.clickNode(match.avatarNode)
-            delay(2000)
-            val profileRoot = rootInActiveWindow
-            if (profileRoot != null) {
-                if (follow && tryFollowUser(profileRoot)) {
-                    stats.usersFollowed++
-                    addLog("👤 关注 [总计: ${stats.usersFollowed}]")
-                    didWork = true
-                }
-                if (dm) {
-                    val sent = sendSuperDm(profileRoot)
-                    if (sent > 0) {
-                        stats.dmsSent += sent
-                        addLog("✉️ 私信×$sent [总计: ${stats.dmsSent}]")
-                        didWork = true
-                    }
-                }
-            }
-            ensureBackToCommentPanel()
-        }
-
-        if (!didWork) {
-            addLog("⚠️ 未能对该用户完成操作，继续找下一条评论")
-        }
-        return didWork
+        AccessibilityUtils.clickNode(firstVideo)
+        delay(2500)
+        addLog("✅ 已进入第一个视频")
+        return true
     }
 
-    private suspend fun closeCommentPanelIfOpen() {
-        val root = rootInActiveWindow ?: return
-        if (TikTokNavigator.isCommentPanelOpen(root)) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            delay(700)
+    private fun findFirstSearchResultVideo(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        return AccessibilityUtils.findNodeByViewId(root, "video_cover")
+            ?: AccessibilityUtils.findNodeByViewId(root, "search_result_item")
+            ?: AccessibilityUtils.findNodeByViewId(root, "feed_item")
+            ?: AccessibilityUtils.findNodeByViewId(root, "video_item")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Video")
+    }
+
+    private fun findEditableNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        root ?: return null
+        if (root.isEditable) return root
+        for (i in 0 until root.childCount) {
+            val r = findEditableNode(root.getChild(i))
+            if (r != null) return r
+        }
+        return null
+    }
+
+    /** 打开评论面板（视频页面） */
+    private suspend fun openCommentPanel(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "Comment")
+            ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
+            ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
+        if (commentBtn == null) return false
+        AccessibilityUtils.clickNode(commentBtn)
+        delay(1800)
+        return true
+    }
+
+    private fun swipeToNextVideo() {
+        AccessibilityUtils.swipeUp(this, screenHeight, screenWidth)
+    }
+
+    /**
+     * 在评论面板里扫描多条评论：
+     * - 收集评论 item 节点
+     * - 取该评论文本，检查是否命中关键词
+     * - 命中则按需要执行 like/reply/follow/dm
+     * - 处理完 commentMaxPerVideo 条命中评论或滑到底部就返回
+     * 返回本视频处理的命中评论数量
+     */
+    private suspend fun scanCommentsAndAct(
+        follow: Boolean, dm: Boolean, like: Boolean, reply: Boolean
+    ): Int {
+        val keywords = config.commentMatchKeywords
+        val maxPerVideo = config.commentMaxPerVideo.coerceAtLeast(1)
+        var matched = 0
+        var scrollAttempts = 0
+        val maxScrollAttempts = 8
+
+        while (matched < maxPerVideo && scrollAttempts < maxScrollAttempts
+            && currentCoroutineContext().isActive) {
+            checkPaused()
+            val root = rootInActiveWindow ?: return matched
+
+            val commentItems = collectCommentItems(root)
+            if (commentItems.isEmpty()) {
+                addLog("ℹ️ 暂未找到评论 item，向下滑评论列表")
+                scrollCommentList()
+                scrollAttempts++
+                continue
+            }
+
+            var actedAny = false
+            for (item in commentItems) {
+                if (matched >= maxPerVideo) break
+
+                // 提取评论文本（不含用户名）
+                val text = extractCommentText(item)
+                val signature = commentSignature(item, text)
+                if (signature.isBlank() || processedCommentSignatures.contains(signature)) continue
+
+                val hit = keywordHit(text, keywords)
+                if (!hit) {
+                    processedCommentSignatures.add(signature)
+                    continue
+                }
+
+                addLog("🎯 命中评论: ${text.take(40)}")
+                processedCommentSignatures.add(signature)
+                matched++
+                stats.keywordMatches++
+
+                // 执行 like
+                if (like) {
+                    val likeNode = findCommentLikeBtn(item)
+                    if (likeNode != null) {
+                        AccessibilityUtils.clickNode(likeNode)
+                        stats.likesGiven++
+                        addLog("❤️ 点赞评论 [总计: ${stats.likesGiven}]")
+                        delay(400)
+                    }
+                }
+
+                // 执行 reply
+                if (reply && config.replyTemplates.isNotEmpty()) {
+                    doReplyToComment(item)
+                }
+
+                // 执行 follow / dm（点头像进个人主页）
+                if (follow || dm) {
+                    val avatar = findCommentAvatar(item)
+                    if (avatar != null) {
+                        AccessibilityUtils.clickNode(avatar)
+                        delay(2200)
+                        val profileRoot = rootInActiveWindow
+                        if (profileRoot != null) {
+                            if (follow && tryFollowUser(profileRoot)) {
+                                stats.usersFollowed++
+                                addLog("👤 关注 [总计: ${stats.usersFollowed}]")
+                            }
+                            if (dm) {
+                                val sent = sendSuperDm(profileRoot)
+                                if (sent > 0) {
+                                    stats.dmsSent += sent
+                                    addLog("✉️ 私信×$sent [总计: ${stats.dmsSent}]")
+                                }
+                            }
+                        }
+                        // 返回评论区
+                        performGlobalAction(GLOBAL_ACTION_BACK)
+                        delay(1500)
+                    } else {
+                        addLog("⚠️ 找不到该评论的头像")
+                    }
+                }
+
+                actedAny = true
+                broadcastStats(true)
+
+                // 评论间小间隔（拟人）
+                delay(800 + Random.nextLong(400))
+            }
+
+            if (matched >= maxPerVideo) break
+
+            // 这一屏处理完了，向下滚动评论看更多
+            scrollCommentList()
+            scrollAttempts++
+            // 如果这一屏一个也没命中也没新评论，多滚几次后退出
+            if (!actedAny) delay(600) else delay(300)
+        }
+        return matched
+    }
+
+    /** 收集评论 list 里的每条评论 item 节点（用 view-id 启发式） */
+    private fun collectCommentItems(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        collectCommentItemsRecursive(root, result)
+        return result
+    }
+
+    private fun collectCommentItemsRecursive(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        val id = node.viewIdResourceName ?: ""
+        if (id.endsWith("comment_item")
+            || id.endsWith("item_comment")
+            || id.endsWith("comment_user")
+            || id.endsWith("ll_comment_item")
+        ) {
+            out.add(node)
+            return // 不再深入这条 item 避免重复
+        }
+        for (i in 0 until node.childCount) {
+            collectCommentItemsRecursive(node.getChild(i), out)
         }
     }
 
-    private suspend fun goToNextSearchVideo() {
-        closeCommentPanelIfOpen()
+    /** 提取评论的纯文本 */
+    private fun extractCommentText(item: AccessibilityNodeInfo): String {
+        val sb = StringBuilder()
+        collectTextsForComment(item, sb)
+        return sb.toString().trim()
+    }
+
+    private fun collectTextsForComment(node: AccessibilityNodeInfo?, sb: StringBuilder) {
+        node ?: return
+        val id = node.viewIdResourceName ?: ""
+        // 跳过用户名节点（避免把用户名当评论内容关键词命中）
+        if (id.endsWith("user_name") || id.endsWith("tv_username")) return
+        val txt = node.text?.toString()
+        if (!txt.isNullOrBlank()) sb.append(txt).append(' ')
+        for (i in 0 until node.childCount) {
+            collectTextsForComment(node.getChild(i), sb)
+        }
+    }
+
+    private fun commentSignature(item: AccessibilityNodeInfo, text: String): String {
+        val rect = android.graphics.Rect()
+        item.getBoundsInScreen(rect)
+        // 用文本前40字符 + bounds 做 sig，避免同一条评论被重复处理
+        return "${text.take(40)}|${rect.left},${rect.top},${rect.right},${rect.bottom}"
+    }
+
+    private fun keywordHit(text: String, keywords: List<String>): Boolean {
+        if (keywords.isEmpty()) return true // 没设置关键词 = 全部命中
+        val lower = text.lowercase()
+        return if (config.commentRequireAll) {
+            keywords.all { lower.contains(it.lowercase()) }
+        } else {
+            keywords.any { lower.contains(it.lowercase()) }
+        }
+    }
+
+    private fun scrollCommentList() {
+        val startY = screenHeight * 0.7f
+        val endY = screenHeight * 0.4f
+        val x = screenWidth * 0.5f
+        val path = android.graphics.Path().apply {
+            moveTo(x, startY)
+            lineTo(x, endY)
+        }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 350))
+            .build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    private suspend fun doReplyToComment(item: AccessibilityNodeInfo) {
+        val replyBtn = findCommentReplyBtn(item) ?: return
+        AccessibilityUtils.clickNode(replyBtn)
+        delay(800)
+        val replyRoot = rootInActiveWindow
+        val inputField = findCommentInput(replyRoot) ?: return
+        AccessibilityUtils.clickNode(inputField)
+        delay(400)
+        AccessibilityUtils.typeText(inputField, config.replyTemplates.random())
         delay(500)
-        TikTokNavigator.swipeToNextVideo(this, screenWidth, screenHeight)
-        videosSkipped++
-        processedCommentUsers.clear()
-        commentScrollFailCount = 0
-        delay(2000)
-        addLog("⏭ 已切换到第 ${videosSkipped + 1} 个视频")
-    }
-
-    private suspend fun ensureBackToCommentPanel() {
-        repeat(3) {
-            val root = rootInActiveWindow ?: return
-            if (TikTokNavigator.isCommentPanelOpen(root)) return
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            delay(700)
+        val postBtn = AccessibilityUtils.findNodeByText(rootInActiveWindow, "Post", false)
+            ?: AccessibilityUtils.findNodeByDescription(rootInActiveWindow, "Post")
+        postBtn?.let {
+            AccessibilityUtils.clickNode(it)
+            stats.repliesSent++
+            addLog("💬 回复评论 [总计: ${stats.repliesSent}]")
         }
+        delay(800)
     }
 
     // ==================== 超级话术核心逻辑 ====================

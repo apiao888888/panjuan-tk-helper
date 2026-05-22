@@ -11,6 +11,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.tiktokassist.databinding.ActivityTaskConfigBinding
+import com.tiktokassist.model.TargetSourceType
 import com.tiktokassist.model.TaskMode
 import com.tiktokassist.ui.adapter.KeywordAdapter
 import com.tiktokassist.utils.PrefsManager
@@ -19,7 +20,7 @@ class TaskConfigActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityTaskConfigBinding
     private var selectedMode: TaskMode = TaskMode.NURTURE_ACCOUNT
-    private lateinit var commentKeywordAdapter: KeywordAdapter
+    private var selectedSource: TargetSourceType = TargetSourceType.SEARCH_KEYWORD
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,8 +33,8 @@ class TaskConfigActivity : AppCompatActivity() {
             finish()
         }
 
-        setupCommentKeywordList()
         setupModeSpinner()
+        setupTargetSourceSpinner()
         loadConfig()
         setupListeners()
     }
@@ -69,34 +70,124 @@ class TaskConfigActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupCommentKeywordList() {
-        commentKeywordAdapter = KeywordAdapter(mutableListOf()) { keyword ->
-            commentKeywordAdapter.removeKeyword(keyword)
-            saveConfig()
-        }
-        binding.rvCommentKeywords.layoutManager = LinearLayoutManager(this)
-        binding.rvCommentKeywords.adapter = commentKeywordAdapter
-    }
-
     private fun updateTargetFieldVisibility() {
-        val needsUsername = selectedMode in listOf(
+        val needsTarget = selectedMode in listOf(
             TaskMode.TARGET_FANS_FOLLOW,
-            TaskMode.TARGET_FANS_DM
-        )
-        val needsVideoSearch = selectedMode in listOf(
+            TaskMode.TARGET_FANS_DM,
             TaskMode.VIDEO_COMMENT_FOLLOW,
             TaskMode.VIDEO_COMMENT_DM,
             TaskMode.VIDEO_COMMENT_LIKE,
             TaskMode.VIDEO_COMMENT_REPLY
         )
-        binding.layoutTargetUsername.visibility = if (needsUsername) View.VISIBLE else View.GONE
-        binding.layoutVideoSearch.visibility = if (needsVideoSearch) View.VISIBLE else View.GONE
+        binding.layoutTargetUsername.visibility = if (needsTarget) View.VISIBLE else View.GONE
+
+        // 评论关键词区：只有「视频评论区」相关功能才需要
+        val needsCommentKeyword = selectedMode in listOf(
+            TaskMode.VIDEO_COMMENT_FOLLOW,
+            TaskMode.VIDEO_COMMENT_DM,
+            TaskMode.VIDEO_COMMENT_LIKE,
+            TaskMode.VIDEO_COMMENT_REPLY
+        )
+        val keywordVis = if (needsCommentKeyword) View.VISIBLE else View.GONE
+        binding.cardCommentKeyword.visibility = keywordVis
+        binding.headerCommentKeyword.visibility = keywordVis
+
+        // 根据功能限定目标来源选项
+        updateTargetSourceOptions()
 
         // 养号功能才显示养号设置（连同标题一起显示/隐藏）
         val isNurture = selectedMode == TaskMode.NURTURE_ACCOUNT
         val nurtureVis = if (isNurture) View.VISIBLE else View.GONE
         binding.cardNurtureSettings.visibility = nurtureVis
         binding.headerNurture.visibility = nurtureVis
+    }
+
+    // ==================== 目标来源选择 ====================
+
+    private fun setupTargetSourceSpinner() {
+        // 初始填充全部选项，updateTargetSourceOptions 会按功能裁剪
+        val names = TargetSourceType.values().map { it.displayName }
+        val adapter = ArrayAdapter(this, com.tiktokassist.R.layout.item_spinner_selected, names).apply {
+            setDropDownViewResource(com.tiktokassist.R.layout.item_spinner_dropdown)
+        }
+        binding.spinnerTargetSource.adapter = adapter
+        binding.spinnerTargetSource.setPopupBackgroundResource(com.tiktokassist.R.color.card_dark)
+        binding.spinnerTargetSource.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                val visibleOptions = visibleTargetSources(selectedMode)
+                selectedSource = visibleOptions.getOrNull(pos) ?: TargetSourceType.SEARCH_KEYWORD
+                updateTargetInputHint()
+                saveConfig()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun visibleTargetSources(mode: TaskMode): List<TargetSourceType> {
+        return when (mode) {
+            TaskMode.TARGET_FANS_FOLLOW,
+            TaskMode.TARGET_FANS_DM ->
+                // 某人粉丝：只能输入用户名
+                listOf(TargetSourceType.USERNAME)
+            TaskMode.VIDEO_COMMENT_FOLLOW,
+            TaskMode.VIDEO_COMMENT_DM,
+            TaskMode.VIDEO_COMMENT_LIKE,
+            TaskMode.VIDEO_COMMENT_REPLY ->
+                // 评论区：支持搜索关键词、视频链接、当前视频
+                listOf(
+                    TargetSourceType.SEARCH_KEYWORD,
+                    TargetSourceType.VIDEO_URL,
+                    TargetSourceType.CURRENT_VIDEO
+                )
+            else -> emptyList()
+        }
+    }
+
+    private fun updateTargetSourceOptions() {
+        val options = visibleTargetSources(selectedMode)
+        if (options.isEmpty()) return
+        val names = options.map { it.displayName }
+        val adapter = ArrayAdapter(this, com.tiktokassist.R.layout.item_spinner_selected, names).apply {
+            setDropDownViewResource(com.tiktokassist.R.layout.item_spinner_dropdown)
+        }
+        binding.spinnerTargetSource.adapter = adapter
+        // 选中已保存的来源（若当前模式不支持则用第一个）
+        val idx = options.indexOf(selectedSource).coerceAtLeast(0)
+        binding.spinnerTargetSource.setSelection(idx)
+        selectedSource = options[idx]
+        updateTargetInputHint()
+    }
+
+    private fun updateTargetInputHint() {
+        when (selectedSource) {
+            TargetSourceType.SEARCH_KEYWORD -> {
+                binding.tvTargetInputLabel.text = "搜索关键词"
+                binding.etTargetUsername.hint = "例如：美女、穿搭、宠物"
+                binding.tvTargetInputHelp.text = "脚本会自动打开 TikTok 搜索并遍历视频"
+                binding.tvTargetInputHelp.visibility = View.VISIBLE
+                binding.etTargetUsername.visibility = View.VISIBLE
+            }
+            TargetSourceType.USERNAME -> {
+                binding.tvTargetInputLabel.text = "TikTok 用户名"
+                binding.etTargetUsername.hint = "@username 或 username"
+                binding.tvTargetInputHelp.text = "脚本会进入该用户主页/粉丝列表"
+                binding.tvTargetInputHelp.visibility = View.VISIBLE
+                binding.etTargetUsername.visibility = View.VISIBLE
+            }
+            TargetSourceType.VIDEO_URL -> {
+                binding.tvTargetInputLabel.text = "视频链接"
+                binding.etTargetUsername.hint = "tiktok.com/@xxx/video/123…"
+                binding.tvTargetInputHelp.text = "脚本会打开该链接对应的视频"
+                binding.tvTargetInputHelp.visibility = View.VISIBLE
+                binding.etTargetUsername.visibility = View.VISIBLE
+            }
+            TargetSourceType.CURRENT_VIDEO -> {
+                binding.tvTargetInputLabel.text = "当前已打开的视频"
+                binding.tvTargetInputHelp.text = "请先在 TikTok 打开目标视频，再回来启动脚本"
+                binding.tvTargetInputHelp.visibility = View.VISIBLE
+                binding.etTargetUsername.visibility = View.GONE
+            }
+        }
     }
 
     // ==================== 加载配置 ====================
@@ -107,15 +198,17 @@ class TaskConfigActivity : AppCompatActivity() {
         // 功能选择
         selectedMode = config.currentMode
         binding.spinnerMode.setSelection(config.currentMode.index - 1)
+        selectedSource = config.targetSourceType
         updateTargetFieldVisibility()
 
-        // 目标账号 / 视频搜索
-        binding.etTargetUsername.setText(config.targetUsername)
-        binding.etSearchKeyword.setText(config.searchKeyword)
-        val kwList = commentKeywordAdapter.getKeywords()
-        kwList.clear()
-        kwList.addAll(config.commentMatchKeywords)
-        commentKeywordAdapter.notifyDataSetChanged()
+        // 目标输入框：优先用 targetInput，否则向后兼容 targetUsername
+        binding.etTargetUsername.setText(
+            config.targetInput.ifBlank { config.targetUsername }
+        )
+
+        // 评论关键词
+        binding.etCommentKeywords.setText(config.commentMatchKeywords.joinToString("\n"))
+        binding.etCommentMaxPerVideo.setText(config.commentMaxPerVideo.toString())
 
         // 超级话术
         binding.switchSuperDm.isChecked = config.superDmEnabled
@@ -162,35 +255,10 @@ class TaskConfigActivity : AppCompatActivity() {
                 .putExtra("tab", "comment"))
         }
 
-        binding.btnAddCommentKeyword.setOnClickListener {
-            showAddKeywordDialog()
-        }
-
         binding.btnSave.setOnClickListener {
             saveConfig()
             Toast.makeText(this, "✅ 配置已保存", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun showAddKeywordDialog() {
-        val input = EditText(this).apply {
-            hint = "例如：合作、咨询、怎么买"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("添加评论匹配关键词")
-            .setMessage("评论内容包含该词时，才会对该用户关注/私信")
-            .setView(input)
-            .setPositiveButton("添加") { _, _ ->
-                val kw = input.text.toString().trim()
-                if (kw.isNotEmpty()) {
-                    commentKeywordAdapter.addKeyword(kw)
-                    saveConfig()
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     private fun updateSuperDmVisibility(enabled: Boolean) {
@@ -203,9 +271,22 @@ class TaskConfigActivity : AppCompatActivity() {
         val config = PrefsManager.loadConfig(this)
 
         config.currentMode = selectedMode
-        config.targetUsername = binding.etTargetUsername.text.toString().trim()
-        config.searchKeyword = binding.etSearchKeyword.text.toString().trim()
-        config.commentMatchKeywords = commentKeywordAdapter.getKeywords()
+        config.targetSourceType = selectedSource
+        val inputText = binding.etTargetUsername.text.toString().trim()
+        config.targetInput = inputText
+        config.targetUsername = inputText // 兼容旧逻辑
+        config.targetVideoUrl = inputText // 兼容旧逻辑
+
+        // 评论关键词（按行切分、去空、去重）
+        val keywords = binding.etCommentKeywords.text.toString()
+            .split('\n', ',', '，', ';', '；')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .toMutableList()
+        config.commentMatchKeywords = keywords
+        config.commentMaxPerVideo = binding.etCommentMaxPerVideo.text.toString()
+            .toIntOrNull()?.coerceIn(1, 100) ?: 5
 
         config.superDmEnabled = binding.switchSuperDm.isChecked
         config.superDmMinCount = binding.etSuperDmMin.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 1
