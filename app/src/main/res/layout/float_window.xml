@@ -125,9 +125,31 @@
                 android:text="视频0  ❤0  💬0  👤0  ✉0"
                 android:textColor="#666666"
                 android:textSize="11sp"
-                android:layout_marginBottom="10dp"
+                android:layout_marginBottom="6dp"
                 android:singleLine="true"
                 android:ellipsize="end" />
+
+            <!-- 实时日志（滚动显示最近几条） -->
+            <ScrollView
+                android:id="@+id/scrollFloatLog"
+                android:layout_width="match_parent"
+                android:layout_height="92dp"
+                android:layout_marginBottom="8dp"
+                android:background="#171717"
+                android:padding="6dp"
+                android:fadeScrollbars="false"
+                android:scrollbars="vertical">
+
+                <TextView
+                    android:id="@+id/tvFloatLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="等待启动..."
+                    android:textColor="#8AE57F"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace"
+                    android:lineSpacingMultiplier="1.1" />
+            </ScrollView>
 
             <!-- 分隔线 -->
             <View

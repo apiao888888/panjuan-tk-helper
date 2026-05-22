@@ -13,6 +13,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
@@ -56,15 +57,30 @@ class FloatingWindowService : Service() {
         }
     }
 
+    // 悬浮窗里显示的最近日志（最多 30 条）
+    private val recentLogs = ArrayDeque<String>(30)
+
     private val statsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             intent ?: return
             when (intent.action) {
                 TikTokAccessibilityService.ACTION_UPDATE_STATS -> syncStateFromBroadcast(intent)
                 TikTokAccessibilityService.ACTION_LOG -> {
-                    // 可选：在悬浮窗显示最后一条日志
+                    val line = intent.getStringExtra("log_line") ?: return
+                    appendLogToFloat(line)
                 }
             }
+        }
+    }
+
+    private fun appendLogToFloat(line: String) {
+        if (recentLogs.size >= 30) recentLogs.removeFirst()
+        recentLogs.addLast(line)
+        val tv = floatView?.findViewById<TextView>(R.id.tvFloatLog) ?: return
+        tv.text = recentLogs.joinToString("\n")
+        // 自动滚动到底部
+        floatView?.findViewById<ScrollView>(R.id.scrollFloatLog)?.post {
+            floatView?.findViewById<ScrollView>(R.id.scrollFloatLog)?.fullScroll(View.FOCUS_DOWN)
         }
     }
 
@@ -114,23 +130,41 @@ class FloatingWindowService : Service() {
         layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
         floatView?.let { windowManager.updateViewLayout(it, layoutParams) }
+        // 展开时把无障碍服务里的日志拉过来显示
+        syncLogsFromService()
         refreshUI()
     }
 
-    // ==================== 拖动 ====================
+    private fun syncLogsFromService() {
+        recentLogs.clear()
+        // logLines 是无障碍服务里维护的环形日志（最多 50 条），取最近 30 条
+        TikTokAccessibilityService.logLines.takeLast(30).forEach { recentLogs.addLast(it) }
+        val tv = floatView?.findViewById<TextView>(R.id.tvFloatLog) ?: return
+        tv.text = if (recentLogs.isEmpty()) "等待启动..." else recentLogs.joinToString("\n")
+        floatView?.findViewById<ScrollView>(R.id.scrollFloatLog)?.post {
+            floatView?.findViewById<ScrollView>(R.id.scrollFloatLog)?.fullScroll(View.FOCUS_DOWN)
+        }
+    }
 
-    private fun setupTouchListener() {
-        floatView?.setOnTouchListener { _, event ->
+    // ==================== 拖动 ====================
+    //
+    // 关键：把 OnTouchListener 设在「悬浮球」和「展开面板标题栏」上，而不是 root view，
+    // 这样展开态里的子按钮（▶ ⏸ ⏹ 等）能正常 click。
+    // 同时 ACTION_DOWN 必须返回 true，否则后续 MOVE/UP 不会到这个 listener。
+
+    private fun makeDragTapListener(onTap: () -> Unit): View.OnTouchListener {
+        return View.OnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initX = layoutParams.x; initY = layoutParams.y
                     initTouchX = event.rawX; initTouchY = event.rawY
-                    isDragging = false; false
+                    isDragging = false
+                    true // 必须返回 true 才能继续收到 MOVE/UP
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initTouchX).toInt()
                     val dy = (event.rawY - initTouchY).toInt()
-                    if (abs(dx) > 6 || abs(dy) > 6) isDragging = true
+                    if (abs(dx) > 12 || abs(dy) > 12) isDragging = true
                     if (isDragging) {
                         layoutParams.x = initX + dx
                         layoutParams.y = initY + dy
@@ -138,15 +172,24 @@ class FloatingWindowService : Service() {
                     }
                     true
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (!isDragging) {
-                        if (isExpanded) showCollapsed() else showExpanded()
-                    }
-                    isDragging = false; false
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!isDragging) onTap()
+                    isDragging = false
+                    true
                 }
                 else -> false
             }
         }
+    }
+
+    private fun setupTouchListener() {
+        // 收起态：点小球 → 展开；按住拖动 → 移动位置
+        floatView?.findViewById<View>(R.id.layoutCollapsed)
+            ?.setOnTouchListener(makeDragTapListener { showExpanded() })
+
+        // 展开态：标题栏可拖动（不响应 tap，按钮自己点）
+        floatView?.findViewById<View>(R.id.tvPanelTitle)
+            ?.setOnTouchListener(makeDragTapListener { /* 标题栏 tap 不做事 */ })
     }
 
     // ==================== 三按钮逻辑 ====================
