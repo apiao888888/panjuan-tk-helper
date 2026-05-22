@@ -34,6 +34,7 @@
         <activity
             android:name=".ui.LicenseActivity"
             android:exported="true"
+            android:theme="@style/Theme.TikTokAssistant.NoActionBar"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -51,6 +52,7 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="false"
+            android:theme="@style/Theme.TikTokAssistant.NoActionBar"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- 任务配置界面 -->
