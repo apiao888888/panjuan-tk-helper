@@ -464,54 +464,71 @@ class TikTokAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** 通过搜索入口跳到关键词搜索结果，并打开第一个视频 */
+    /**
+     * 通过搜索入口跳到关键词搜索结果，并打开第一个视频。
+     *
+     * TikTok 国际版的实际 UI 结构（实测）：
+     * - 顶部右上角放大镜：class=ImageView, clickable=true, content-desc="", 位置 [926,95][1080,249]
+     * - 搜索输入框：class=EditText, 自动 focused=true
+     * - 触发搜索按钮：右上角 text="Search" 的 Button
+     * - 搜索结果通常默认在 "Top" tab，第一个视频卡片通常带视频缩略图
+     */
     private suspend fun navigateBySearchKeyword(keyword: String): Boolean {
         addLog("🔎 搜索关键词: $keyword")
 
-        // 步骤1：从主页（For You）找搜索图标。TikTok 的搜索按钮在顶部右侧，content desc 通常是 "Search"
+        // 确保在 Home tab（For You 页面）—— 找底部 nav 的 Home 按钮
+        ensureOnHomeFeed()
+
+        // 步骤1：从主页（For You）找搜索图标
         var root = rootInActiveWindow ?: return false
-        val searchEntry = AccessibilityUtils.findNodeByDescription(root, "Search")
-            ?: AccessibilityUtils.findNodeByViewId(root, "search_icon")
-            ?: AccessibilityUtils.findNodeByViewId(root, "iv_search")
+        val searchEntry = findTopRightSearchIcon(root)
         if (searchEntry == null) {
-            addLog("⚠️ 找不到搜索入口，尝试直接处理当前页面")
-            return false
+            addLog("⚠️ 找不到搜索图标，尝试点击右上角固定位置")
+            // 兜底：直接点击屏幕右上角固定坐标（约屏幕宽 93%、高 7%）
+            AccessibilityUtils.tapAt(this, screenWidth * 0.93f, screenHeight * 0.075f)
+        } else {
+            addLog("📍 找到搜索图标，点击")
+            AccessibilityUtils.clickNode(searchEntry)
         }
-        AccessibilityUtils.clickNode(searchEntry)
-        delay(1500)
+        delay(2000)
 
         // 步骤2：找到搜索输入框
         root = rootInActiveWindow ?: return false
-        val searchInput = AccessibilityUtils.findNodeByViewId(root, "search_input")
-            ?: AccessibilityUtils.findNodeByViewId(root, "et_search_kw")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Search")
-            ?: findEditableNode(root)
+        val searchInput = findEditableNode(root)
         if (searchInput == null) {
             addLog("⚠️ 找不到搜索输入框")
             return false
         }
+        addLog("✏️ 输入关键词")
         AccessibilityUtils.clickNode(searchInput)
         delay(500)
         AccessibilityUtils.typeText(searchInput, keyword)
-        delay(800)
+        delay(1000)
 
-        // 步骤3：触发搜索（找 "Search" 按钮或 IME 回车键）
+        // 步骤3：触发搜索 - text="Search" 的 Button
         root = rootInActiveWindow ?: return false
         val searchBtn = AccessibilityUtils.findNodeByText(root, "Search", false)
-            ?: AccessibilityUtils.findNodeByDescription(root, "Search", false)
-            ?: AccessibilityUtils.findNodeByViewId(root, "tv_search")
+            ?: AccessibilityUtils.findNodeByText(root, "搜索", false)
         if (searchBtn != null) {
+            addLog("🚀 提交搜索")
             AccessibilityUtils.clickNode(searchBtn)
+        } else {
+            addLog("⚠️ 找不到提交搜索按钮，尝试模拟回车")
+            // 兜底：通过 IME action 提交（EditText 的 IME_ACTION_SEARCH）
+            searchInput.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         }
-        delay(2500)
+        delay(3000)
 
-        // 步骤4：在结果页找第一个视频卡片，点击进入
+        // 步骤4：在结果页找第一个视频卡片
         root = rootInActiveWindow ?: return false
-        // 优先尝试切到 "Videos" tab
+
+        // 国际版 TikTok 搜索结果默认是 "Top" tab，里面有 "Videos" section
+        // 先尝试切换到 Videos tab（如果存在）
         val videoTab = AccessibilityUtils.findNodeByText(root, "Videos", false)
-        if (videoTab != null) {
+        if (videoTab != null && videoTab.isClickable) {
+            addLog("📂 切到 Videos tab")
             AccessibilityUtils.clickNode(videoTab)
-            delay(1200)
+            delay(1500)
             root = rootInActiveWindow ?: return false
         }
 
@@ -520,23 +537,120 @@ class TikTokAccessibilityService : AccessibilityService() {
             addLog("⚠️ 找不到搜索结果视频")
             return false
         }
+        addLog("▶ 点击进入第一个视频")
         AccessibilityUtils.clickNode(firstVideo)
-        delay(2500)
+        delay(3000)
         addLog("✅ 已进入第一个视频")
         return true
     }
 
+    /** 确保 TikTok 在主 Feed（Home tab）。如果不在则点底部 Home */
+    private suspend fun ensureOnHomeFeed() {
+        val root = rootInActiveWindow ?: return
+        val homeBtn = AccessibilityUtils.findNodeByDescription(root, "Home", false)
+        if (homeBtn != null && homeBtn.isClickable) {
+            // 已经选中则不点；可以根据 selected 判断
+            if (!homeBtn.isSelected) {
+                AccessibilityUtils.clickNode(homeBtn)
+                delay(1500)
+            }
+        }
+    }
+
+    /**
+     * 找顶部右上角的搜索图标。TikTok 不给它 content-desc 也不给 text，所以靠位置 + 类型启发：
+     * - 位置：x > 屏幕宽度 75%，y < 屏幕高度 15%
+     * - class 包含 ImageView 或 Image
+     * - clickable=true
+     */
+    private fun findTopRightSearchIcon(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        collectTopRightClickableImages(root, result)
+        // 优先选择最右上的（x 最大、y 最小）
+        return result.maxByOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            // 评分：越靠右上越高分
+            (r.left - r.top * 2)
+        }
+    }
+
+    private fun collectTopRightClickableImages(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        if (node.isClickable) {
+            val cls = node.className?.toString() ?: ""
+            if (cls.contains("ImageView") || cls.contains("Image")) {
+                val r = android.graphics.Rect()
+                node.getBoundsInScreen(r)
+                val w = r.width()
+                val h = r.height()
+                // 在屏幕顶部右侧 + 大小看起来像图标（不是大块容器）
+                if (r.left > screenWidth * 0.75f
+                    && r.top < screenHeight * 0.15f
+                    && w in 40..300
+                    && h in 40..300
+                ) {
+                    out.add(node)
+                }
+            }
+        }
+        for (i in 0 until node.childCount) {
+            collectTopRightClickableImages(node.getChild(i), out)
+        }
+    }
+
+    /**
+     * 找搜索结果页里的第一个视频卡片。TikTok 搜索结果通常是 RecyclerView 里的卡片，
+     * 每个卡片包含视频缩略图和标题。
+     * 策略：找第一个 clickable=true 且在屏幕可见区域的 ImageView/容器（视频缩略图）。
+     */
     private fun findFirstSearchResultVideo(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        return AccessibilityUtils.findNodeByViewId(root, "video_cover")
-            ?: AccessibilityUtils.findNodeByViewId(root, "search_result_item")
-            ?: AccessibilityUtils.findNodeByViewId(root, "feed_item")
-            ?: AccessibilityUtils.findNodeByViewId(root, "video_item")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Video")
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        collectVideoResultCandidates(root, candidates)
+        // 选最靠上的那个（最先出现的搜索结果）
+        return candidates.minByOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.top
+        }
+    }
+
+    private fun collectVideoResultCandidates(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        if (node.isClickable) {
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            val w = r.width()
+            val h = r.height()
+            val cls = node.className?.toString() ?: ""
+            // 视频卡片：宽度通常占屏幕 30%~50%，高宽比 1:1 ~ 16:9
+            // 在可见区（y > 状态栏 200，y < 屏幕高度 85%）
+            if (w in (screenWidth / 4)..(screenWidth * 3 / 4)
+                && h in 300..1200
+                && r.top in 200..(screenHeight * 85 / 100)
+                && (cls.contains("FrameLayout") || cls.contains("ViewGroup")
+                    || cls.contains("ImageView") || cls.contains("RelativeLayout"))
+            ) {
+                out.add(node)
+            }
+        }
+        for (i in 0 until node.childCount) {
+            collectVideoResultCandidates(node.getChild(i), out)
+        }
     }
 
     private fun findEditableNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         root ?: return null
         if (root.isEditable) return root
+        // class 检查兜底
+        val cls = root.className?.toString() ?: ""
+        if (cls == "android.widget.EditText") return root
         for (i in 0 until root.childCount) {
             val r = findEditableNode(root.getChild(i))
             if (r != null) return r
@@ -544,15 +658,27 @@ class TikTokAccessibilityService : AccessibilityService() {
         return null
     }
 
-    /** 打开评论面板（视频页面） */
+    /**
+     * 打开评论面板。
+     * TikTok 国际版评论按钮的 content-desc 实际是 "Read or add comments. N comments"
+     * 所以我们用宽松匹配（findNode 默认是 substring）。
+     */
     private suspend fun openCommentPanel(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "Comment")
+        // findNodeByDescription 默认应该是 contains（如果不是，下面这个会拿不到）
+        val commentBtn = AccessibilityUtils.findNodeByDescription(root, "comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
+            ?: AccessibilityUtils.findNodeByDescription(root, "comments")
+            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add")
             ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
-        if (commentBtn == null) return false
+        if (commentBtn == null) {
+            addLog("⚠️ 找不到评论按钮")
+            return false
+        }
+        addLog("💬 打开评论区")
         AccessibilityUtils.clickNode(commentBtn)
-        delay(1800)
+        delay(2200) // 等评论面板动画 + 数据加载
         return true
     }
 
@@ -672,11 +798,71 @@ class TikTokAccessibilityService : AccessibilityService() {
         return matched
     }
 
-    /** 收集评论 list 里的每条评论 item 节点（用 view-id 启发式） */
+    /**
+     * 收集评论 list 里的每条评论 item 节点。
+     * TikTok 的 view-id 被 R8 混淆，靠 id 不可靠。新策略：
+     * 1. 先找页面里最大的 scrollable 节点（评论列表 RecyclerView）
+     * 2. 取它的直接子节点作为 comment items
+     * 3. 兜底：用 viewId 启发式
+     */
     private fun collectCommentItems(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        // 策略1：找评论列表 RecyclerView（最大的 scrollable 节点）
+        val list = findCommentList(root)
+        if (list != null && list.childCount > 0) {
+            val items = mutableListOf<AccessibilityNodeInfo>()
+            for (i in 0 until list.childCount) {
+                val child = list.getChild(i) ?: continue
+                // 过滤掉太小的（可能是分隔符等）
+                val r = android.graphics.Rect()
+                child.getBoundsInScreen(r)
+                if (r.height() > 80 && r.width() > screenWidth / 2) {
+                    items.add(child)
+                }
+            }
+            if (items.isNotEmpty()) return items
+        }
+
+        // 策略2：viewId 启发式（兜底）
         val result = mutableListOf<AccessibilityNodeInfo>()
         collectCommentItemsRecursive(root, result)
         return result
+    }
+
+    /**
+     * 找评论列表节点：
+     * - scrollable = true
+     * - 高度 > 屏幕高度 30%（必须是足够大的列表）
+     * - 优先选位置靠下（在评论 panel 区域）的
+     */
+    private fun findCommentList(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val all = mutableListOf<AccessibilityNodeInfo>()
+        collectScrollableNodes(root, all)
+        if (all.isEmpty()) return null
+        // 选 height 最大的那个，但要在屏幕下半部分（评论 panel 通常在下方）
+        return all.filter { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.height() > screenHeight * 0.25
+        }.maxByOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.height()
+        } ?: all.maxByOrNull { node ->
+            val r = android.graphics.Rect()
+            node.getBoundsInScreen(r)
+            r.height()
+        }
+    }
+
+    private fun collectScrollableNodes(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        if (node.isScrollable) out.add(node)
+        for (i in 0 until node.childCount) {
+            collectScrollableNodes(node.getChild(i), out)
+        }
     }
 
     private fun collectCommentItemsRecursive(
@@ -691,7 +877,7 @@ class TikTokAccessibilityService : AccessibilityService() {
             || id.endsWith("ll_comment_item")
         ) {
             out.add(node)
-            return // 不再深入这条 item 避免重复
+            return
         }
         for (i in 0 until node.childCount) {
             collectCommentItemsRecursive(node.getChild(i), out)
@@ -734,18 +920,40 @@ class TikTokAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun scrollCommentList() {
-        val startY = screenHeight * 0.7f
-        val endY = screenHeight * 0.4f
-        val x = screenWidth * 0.5f
-        val path = android.graphics.Path().apply {
-            moveTo(x, startY)
-            lineTo(x, endY)
+    /**
+     * 滚动评论列表。先尝试通过 RecyclerView 的 ACTION_SCROLL_FORWARD（更稳定），
+     * 失败则用手势。最后必须 delay 等 UI 刷新。
+     */
+    private suspend fun scrollCommentList() {
+        val root = rootInActiveWindow
+        val list = if (root != null) findCommentList(root) else null
+
+        var actionOk = false
+        if (list != null) {
+            try {
+                actionOk = list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            } catch (e: Exception) {
+                actionOk = false
+            }
         }
-        val gesture = android.accessibilityservice.GestureDescription.Builder()
-            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 350))
-            .build()
-        dispatchGesture(gesture, null, null)
+
+        if (!actionOk) {
+            // 手势滚动：评论 panel 通常占屏幕下 65%
+            // 从下往上扫（实际滑动 distance 要大一点）
+            val startY = screenHeight * 0.85f
+            val endY = screenHeight * 0.45f
+            val x = screenWidth * 0.5f
+            val path = android.graphics.Path().apply {
+                moveTo(x, startY)
+                lineTo(x, endY)
+            }
+            val gesture = android.accessibilityservice.GestureDescription.Builder()
+                .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 400))
+                .build()
+            dispatchGesture(gesture, null, null)
+        }
+        // 等手势 + 内容加载完成
+        delay(1200)
     }
 
     private suspend fun doReplyToComment(item: AccessibilityNodeInfo) {
