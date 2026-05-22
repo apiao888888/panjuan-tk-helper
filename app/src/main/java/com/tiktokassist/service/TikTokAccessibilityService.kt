@@ -12,6 +12,7 @@ import com.tiktokassist.model.TaskMode
 import com.tiktokassist.model.TaskStats
 import com.tiktokassist.utils.AccessibilityUtils
 import com.tiktokassist.utils.PrefsManager
+import com.tiktokassist.utils.UiDumper
 import kotlinx.coroutines.*
 import kotlin.random.Random
 

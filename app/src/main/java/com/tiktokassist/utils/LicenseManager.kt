@@ -33,7 +33,7 @@ object LicenseManager {
         val xorKey = byteArrayOf(0x17, 0x3C, 0x5A, 0x2B, 0x09, 0x4E, 0x7F, 0x33,
                                   0x21, 0x6D, 0x08, 0x55, 0x3A, 0x1C, 0x72, 0x44)
         val combined = p1 + p2
-        return ByteArray(combined.size) { i -> (combined[i].toInt() xor xorKey[i % xorKey.size]).toByte() }
+        return ByteArray(combined.size) { i -> (combined[i].toInt() xor xorKey[i % xorKey.size].toInt()).toByte() }
     }
 
     // ==================== 设备ID ====================
