@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -90,7 +91,11 @@ class FloatingWindowService : Service() {
         super.onCreate()
         isRunning = true
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        floatView = LayoutInflater.from(this).inflate(R.layout.float_window, null)
+        // 关键：Service 默认 context 不会被 Material 主题校验通过，
+        // 必须用 ContextThemeWrapper 显式包一层 MaterialComponents 主题，
+        // 否则 MaterialButton 在 inflate 时会抛 IllegalArgumentException 导致 service 闪退。
+        val themedContext = ContextThemeWrapper(this, R.style.Theme_TikTokAssistant)
+        floatView = LayoutInflater.from(themedContext).inflate(R.layout.float_window, null)
         windowManager.addView(floatView, layoutParams)
         setupTouchListener()
         setupButtons()
