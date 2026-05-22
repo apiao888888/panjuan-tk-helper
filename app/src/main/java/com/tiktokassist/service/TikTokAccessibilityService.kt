@@ -419,9 +419,6 @@ class TikTokAccessibilityService : AccessibilityService() {
             return false
         }
 
-        val isSearchMode = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
-            || config.targetSourceType == TargetSourceType.USERNAME
-
         // 第一次进入时根据来源类型导航
         if (!navigatedToTarget) {
             if (!navigateToTarget()) {
@@ -433,16 +430,19 @@ class TikTokAccessibilityService : AccessibilityService() {
 
         // 1. 打开评论区 (openCommentPanel 内部 retry 8s 等待视频页加载)
         if (!openCommentPanel()) {
-            addLog("⚠️ 找不到评论按钮，跳到下一个视频")
-            // 失败 = 当前可能在搜索结果列表/主 Feed/作者主页, 不应继续, 跳下一个
-            // 如果连续多次失败, 强制重新搜索
+            addLog("⚠️ 找不到评论按钮，上划到下一个视频")
             consecutiveCommentPanelFails++
-            if (isSearchMode && consecutiveCommentPanelFails >= 2) {
-                addLog("⚠️ 连续 ${consecutiveCommentPanelFails} 次找不到评论, 强制重新搜索")
+            if (consecutiveCommentPanelFails >= 3) {
+                // 连续 3 次找不到评论按钮，可能不在视频页，重新搜索
+                addLog("⚠️ 连续 ${consecutiveCommentPanelFails} 次找不到评论按钮，重置导航")
                 navigatedToTarget = false
                 consecutiveCommentPanelFails = 0
+                delay(2000)
+                return true
             }
-            goToNextVideoInTask()
+            // 在视频页直接上划到下一条
+            swipeUpInVideoArea()
+            delay(3000)
             return true
         }
         consecutiveCommentPanelFails = 0
@@ -451,14 +451,23 @@ class TikTokAccessibilityService : AccessibilityService() {
         val processedThisVideo = scanCommentsAndAct(follow, dm, like, reply)
         addLog("📊 本视频处理评论 $processedThisVideo 条")
 
-        // 3. 关闭评论区 (只关 panel, 不要把视频也关了)
-        // 先检查当前还在不在 TikTok, 在 → BACK 关 panel; 不在 → 跳过 BACK 等下一轮 ensureInTikTok 处理
+        // 3. 关闭评论区 (BACK 一次: 关评论面板，留在视频页)
         if (isInTiktok()) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            delay(1000)
+            // 检查是否还在评论面板 (有"条评论"/"添加评论"等文字)
+            val r = rootInActiveWindow
+            val inPanel = r != null && (
+                AccessibilityUtils.findNodeByText(r, "条评论", true) != null
+                || AccessibilityUtils.findNodeByText(r, "添加评论", true) != null
+                || AccessibilityUtils.findNodeByText(r, "Add comment", true) != null
+                || AccessibilityUtils.findNodeByText(r, "comments", true) != null
+            )
+            if (inPanel) {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                delay(800)
+            }
         }
 
-        // 4. 跳到下一个视频
+        // 4. 上划到下一条视频
         goToNextVideoInTask()
         return true
     }
@@ -544,23 +553,14 @@ class TikTokAccessibilityService : AccessibilityService() {
      * CURRENT_VIDEO / VIDEO_URL 模式: 上滑切下一条 (主 Feed 行为)
      */
     private suspend fun goToNextVideoInTask() {
-        val isSearchMode = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
-            || config.targetSourceType == TargetSourceType.USERNAME
-
-        if (!isSearchMode) {
-            // 主 Feed: 直接上滑
-            if (!ensureInTikTok()) return
-            swipeUpInVideoArea()
-            delay(3000)
-            return
-        }
-
-        // 搜索模式: BACK 回搜索结果列表选下一个卡片
+        // 无论任何模式（搜索/主Feed/用户名）: 直接上划切下一个视频
+        // 搜索模式下，第一次进入后已经在视频 feed 里，上划即可按顺序切下一条
         if (!ensureInTikTok()) {
             addLog("❌ 无法回到 TikTok, 跳过本轮切视频")
             return
         }
-        backToSearchResultsAndPickNext()
+        swipeUpInVideoArea()
+        delay(3000)
     }
 
     /** 检测签名文字是不是判官TK助手主界面/Launcher 等非 TikTok 页面 */
