@@ -57,6 +57,7 @@
         <activity
             android:name=".ui.TaskConfigActivity"
             android:exported="false"
+            android:theme="@style/Theme.TikTokAssistant.NoActionBar"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- 私信话术管理界面 -->

@@ -25,9 +25,10 @@ class TaskConfigActivity : AppCompatActivity() {
         binding = ActivityTaskConfigBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        supportActionBar?.apply {
-            title = "脚本设置"
-            setDisplayHomeAsUpEnabled(true)
+        // 自定义返回按钮
+        binding.btnBack.setOnClickListener {
+            saveConfig()
+            finish()
         }
 
         setupModeSpinner()
