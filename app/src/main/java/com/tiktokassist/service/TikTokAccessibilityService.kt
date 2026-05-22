@@ -1316,15 +1316,20 @@ class TikTokAccessibilityService : AccessibilityService() {
                                 addLog("👤 关注 [总计: ${stats.usersFollowed}]")
                             }
                         }
-                        // 返回评论 panel: 循环 BACK 直到检测到评论 panel 标志, 最多 4 次
-                        // 关键: 每次 BACK 后检查 packageName, 退出了 TikTok 立刻停止 + 重启 TikTok
+                        // 返回评论 panel，回到刚才的位置继续扫
                         backToCommentPanel()
+                        // break 出 for 循环，让 while 循环用新鲜节点重新收集评论
+                        // 已处理的评论都在 processedCommentSignatures 里，不会重复扫
+                        actedAny = true
+                        broadcastStats(true)
+                        delay(500 + Random.nextLong(300))
+                        break
                     } else {
                         addLog("⚠️ 找不到该评论的头像")
                     }
                 }
 
-                actedAny = true
+                if (!actedAny) actedAny = true
                 broadcastStats(true)
 
                 // 评论间小间隔（拟人）
