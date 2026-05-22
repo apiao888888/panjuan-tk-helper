@@ -1102,16 +1102,48 @@ class TikTokAccessibilityService : AccessibilityService() {
         return true
     }
 
+    /**
+     * 找评论按钮. TikTok 视频播放页右侧操作栏:
+     *   头像 (上) → 点赞 → 评论 → 收藏 → 分享 (下)
+     * 评论按钮特征:
+     *   - content-description = "阅读或添加评论" / "Read or add comment" / "查看或添加评论"
+     *   - 或者 description 是 "N 条评论" / "Comment" / "comments"
+     *   - 必须 clickable=true
+     *   - 必须在屏幕 右侧 (x_center > 屏宽 70%) + 中下部 (y_center > 屏高 40%)
+     * 严格的位置约束防止误点到 顶部头像/标题/作者名 等其他位置.
+     */
     private fun findCommentButtonNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        return AccessibilityUtils.findNodeByDescription(root, "阅读或添加评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Read or add comment")
-            ?: AccessibilityUtils.findNodeByDescription(root, "查看或添加评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "comments")
-            ?: AccessibilityUtils.findNodeByDescription(root, "Comment")
-            ?: AccessibilityUtils.findNodeByDescription(root, "条评论")
-            ?: AccessibilityUtils.findNodeByDescription(root, "评论")
-            ?: AccessibilityUtils.findNodeByViewId(root, "comment_btn")
+        // 优先匹配完整描述 + 必须 clickable + 必须在右侧操作栏区域
+        val descCandidates = listOf(
+            "阅读或添加评论", "Read or add comment", "查看或添加评论",
+            "条评论", "条留言"
+        )
+        for (d in descCandidates) {
+            val node = AccessibilityUtils.findNodeByDescription(root, d) ?: continue
+            if (isValidCommentButton(node)) return node
+        }
+        // 兜底: 模糊匹配 "comment"/"评论", 但仍然要求 clickable + 位置正确
+        val softCandidates = listOf("comments", "Comment", "评论")
+        for (d in softCandidates) {
+            val node = AccessibilityUtils.findNodeByDescription(root, d) ?: continue
+            if (isValidCommentButton(node)) return node
+        }
+        return AccessibilityUtils.findNodeByViewId(root, "comment_btn")
             ?: AccessibilityUtils.findNodeByViewId(root, "iv_comment")
+    }
+
+    /** 验证: 节点是右侧操作栏中下部的可点击按钮 */
+    private fun isValidCommentButton(node: AccessibilityNodeInfo): Boolean {
+        if (!node.isClickable) return false
+        val r = android.graphics.Rect()
+        node.getBoundsInScreen(r)
+        val cx = r.exactCenterX()
+        val cy = r.exactCenterY()
+        // 必须在屏幕右侧 (避免左下角弹幕里同名描述节点)
+        // 必须在屏幕中下部 (避免顶部 tab/标题)
+        return cx > screenWidth * 0.70f
+            && cy > screenHeight * 0.30f
+            && cy < screenHeight * 0.90f
     }
 
     /**
@@ -1169,17 +1201,25 @@ class TikTokAccessibilityService : AccessibilityService() {
             }
 
             var actedAny = false
+            var newCommentsThisRound = 0
+            var hitsThisRound = 0
             for (item in commentItems) {
                 // 提取评论文本（不含用户名）
                 val text = extractCommentText(item)
                 val signature = commentSignature(item, text)
                 if (signature.isBlank() || processedCommentSignatures.contains(signature)) continue
+                newCommentsThisRound++
+                // 调试: 输出前 3 条新评论的文本 (避免刷屏)
+                if (newCommentsThisRound <= 3) {
+                    addLog("📝 评论: ${text.take(50)}")
+                }
 
                 val hit = keywordHit(text, keywords)
                 if (!hit) {
                     processedCommentSignatures.add(signature)
                     continue
                 }
+                hitsThisRound++
 
                 // 防御: 命中文本如果是判官TK助手主界面的元素, 跳过
                 if (looksLikeOwnApp(text)) {
@@ -1261,6 +1301,9 @@ class TikTokAccessibilityService : AccessibilityService() {
             // 不再因 matched 达到 maxPerVideo 而退出, 继续扫到底
             // 在滚动前记录这一屏的"内容指纹"(第一条评论文本) 用于检测是否到底
             val firstSig = commentItems.firstOrNull()?.let { extractCommentText(it) } ?: ""
+            if (newCommentsThisRound > 0) {
+                addLog("📊 本屏新评论 ${newCommentsThisRound} 条, 命中 ${hitsThisRound} 条 (累计扫${processedCommentSignatures.size})")
+            }
 
             // 这一屏处理完了，向下滚动评论看更多
             scrollCommentList()
@@ -1445,35 +1488,44 @@ class TikTokAccessibilityService : AccessibilityService() {
     }
 
     /** 提取评论的纯文本 */
+    /**
+     * 从评论 item 中提取评论正文.
+     * TikTok 的 viewId 全部被 R8 混淆 (旧版按 id 过滤完全失效, 漏掉所有文本!)
+     * 现在策略:
+     *   1. 递归收集所有非空 text
+     *   2. 过滤掉明显的无关项: 短 (≤2 字符)、纯数字 (点赞数)、纯日期、Reply/回复/查看更多 等
+     *   3. 拼成评论正文字符串
+     */
     private fun extractCommentText(item: AccessibilityNodeInfo): String {
-        val sb = StringBuilder()
-        collectTextsForComment(item, sb)
-        return sb.toString().trim()
+        val pieces = mutableListOf<String>()
+        collectTextsRaw(item, pieces)
+        // 过滤无关项
+        val filtered = pieces
+            .map { it.trim() }
+            .filter { it.length >= 2 }
+            .filterNot { it.matches(Regex("^\\d+[wkmKMW天小时分秒前]*$")) }  // 纯数字/带单位 (点赞数/时间)
+            .filterNot { it.equals("Reply", true) || it == "回复" || it == "回覆" }
+            .filterNot { it.contains("View") && it.contains("more") }  // View N more replies
+            .filterNot { it.contains("查看") && (it.contains("回复") || it.contains("条")) }
+            .filterNot { it == "Translate" || it == "翻译" }
+        return filtered.joinToString(" ").trim()
     }
 
-    private fun collectTextsForComment(node: AccessibilityNodeInfo?, sb: StringBuilder) {
+    private fun collectTextsRaw(node: AccessibilityNodeInfo?, out: MutableList<String>) {
         node ?: return
-        val id = node.viewIdResourceName ?: ""
-        // 跳过用户名节点和时间/reply 等无关文本
-        // 实测 TikTok 用户名 rid=...:id/title, 时间 rid=...:id/e7t, reply rid=...:id/e6l
-        if (id.endsWith("user_name") || id.endsWith("tv_username")
-            || id.endsWith("/title") || id.endsWith("/e7t") || id.endsWith("/e6l")
-        ) {
-            // 不递归到子节点，避免把这些区域的子文本算进去
-            return
-        }
-        val txt = node.text?.toString()
-        if (!txt.isNullOrBlank()) sb.append(txt).append(' ')
+        val t = node.text?.toString()
+        if (!t.isNullOrBlank()) out.add(t)
         for (i in 0 until node.childCount) {
-            collectTextsForComment(node.getChild(i), sb)
+            collectTextsRaw(node.getChild(i), out)
         }
     }
 
+    /**
+     * 评论签名: 只用 text, 不用 bounds!
+     * 因为滚动后同一条评论的 bounds 会变, 用 bounds 会让同一条评论被反复"视为新评论"处理.
+     */
     private fun commentSignature(item: AccessibilityNodeInfo, text: String): String {
-        val rect = android.graphics.Rect()
-        item.getBoundsInScreen(rect)
-        // 用文本前40字符 + bounds 做 sig，避免同一条评论被重复处理
-        return "${text.take(40)}|${rect.left},${rect.top},${rect.right},${rect.bottom}"
+        return text.take(60)
     }
 
     private fun keywordHit(text: String, keywords: List<String>): Boolean {
