@@ -317,7 +317,7 @@ class FloatingWindowService : Service() {
 
         when (scriptState) {
             ScriptState.STOPPED -> {
-                titleTv?.text = "TikTok 辅助 · 已停止"
+                titleTv?.text = "判官TK助手 · 已停止"
                 titleTv?.setTextColor(0xFFAAAAAA.toInt())
                 bubbleIcon?.text = "TK"
                 dot?.visibility = View.GONE
@@ -337,7 +337,7 @@ class FloatingWindowService : Service() {
             }
 
             ScriptState.RUNNING -> {
-                titleTv?.text = "TikTok 辅助 · 运行中"
+                titleTv?.text = "判官TK助手 · 运行中"
                 titleTv?.setTextColor(0xFF34C759.toInt())
                 bubbleIcon?.text = "▶"
                 dot?.visibility = View.VISIBLE
@@ -359,7 +359,7 @@ class FloatingWindowService : Service() {
             }
 
             ScriptState.PAUSED -> {
-                titleTv?.text = "TikTok 辅助 · 已暂停"
+                titleTv?.text = "判官TK助手 · 已暂停"
                 titleTv?.setTextColor(0xFFFF9500.toInt())
                 bubbleIcon?.text = "⏸"
                 dot?.visibility = View.VISIBLE

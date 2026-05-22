@@ -281,7 +281,7 @@ class MainActivity : AppCompatActivity() {
     private fun openAccessibilitySettings() {
         try {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            Toast.makeText(this, "请找到「TikTok辅助」并开启", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "请找到「判官TK助手服务」并开启", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
@@ -290,7 +290,7 @@ class MainActivity : AppCompatActivity() {
     private fun showAccessibilityDialog() {
         AlertDialog.Builder(this)
             .setTitle("需要开启无障碍服务")
-            .setMessage("本应用需要无障碍服务权限才能自动操作TikTok。\n\n请点击「去开启」，在无障碍设置中找到「TikTok辅助服务」并开启。")
+            .setMessage("本应用需要无障碍服务权限才能自动操作TikTok。\n\n请点击「去开启」，在无障碍设置中找到「判官TK助手服务」并开启。")
             .setPositiveButton("去开启") { _, _ -> openAccessibilitySettings() }
             .setNegativeButton("取消", null)
             .show()
