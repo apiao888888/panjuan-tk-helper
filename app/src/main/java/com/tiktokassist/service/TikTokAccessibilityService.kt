@@ -1100,8 +1100,8 @@ class TikTokAccessibilityService : AccessibilityService() {
                 return false
             }
             addLog("⚠️ 8s 未找到评论按钮节点, 用坐标兜底 tap 评论区域")
-            // 评论按钮实测坐标: x≈90%, y≈66% (1080x2340 设备实测: center=(970,1552))
-            AccessibilityUtils.tapAt(this, screenWidth * 0.90f, screenHeight * 0.66f)
+            // 评论按钮实测坐标: x≈90%, y≈61% (1080x2340 设备实测: center=(970,1452))
+            AccessibilityUtils.tapAt(this, screenWidth * 0.90f, screenHeight * 0.61f)
             delay(2500)
             // 检查是否打开了评论面板 (有 collectCommentItems 能识别的 scrollable)
             val root2 = rootInActiveWindow
@@ -1153,8 +1153,8 @@ class TikTokAccessibilityService : AccessibilityService() {
 
     /**
      * 验证: 节点是右侧操作栏的评论按钮.
-     * 实测: 1080×2340 屏, 评论按钮 center=(970,1552) → x=89.8%, y=66.3%
-     * 放宽到: x > 55%, y 在 40%~92% 之间
+     * 实测: 1080×2340 屏, 评论按钮 center=(970,1452) → x=89.8%, y=62.1%
+     * 放宽到: x > 55%, y 在 35%~92% 之间 (允许按钮随视频内容上下漂移)
      */
     private fun isValidCommentButton(node: AccessibilityNodeInfo): Boolean {
         val r = android.graphics.Rect()
@@ -1162,7 +1162,7 @@ class TikTokAccessibilityService : AccessibilityService() {
         val cx = r.exactCenterX()
         val cy = r.exactCenterY()
         return cx > screenWidth * 0.55f
-            && cy > screenHeight * 0.40f
+            && cy > screenHeight * 0.35f
             && cy < screenHeight * 0.92f
     }
 
@@ -1524,10 +1524,12 @@ class TikTokAccessibilityService : AccessibilityService() {
             .map { it.trim() }
             .filter { it.length >= 2 }
             .filterNot { it.matches(Regex("^\\d+[wkmKMW天小时分秒前]*$")) }  // 纯数字/带单位 (点赞数/时间)
+            .filterNot { it.matches(Regex("^\\d{1,2}[-/]\\d{1,2}$")) }       // 日期如 04-17 / 4/17
+            .filterNot { it.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")) }        // 日期如 2025-04-17
             .filterNot { it.equals("Reply", true) || it == "回复" || it == "回覆" }
-            .filterNot { it.contains("View") && it.contains("more") }  // View N more replies
+            .filterNot { it.contains("View") && it.contains("more") }          // View N more replies
             .filterNot { it.contains("查看") && (it.contains("回复") || it.contains("条")) }
-            .filterNot { it == "Translate" || it == "翻译" }
+            .filterNot { it == "Translate" || it == "翻译" || it == "查看翻译" }
         return filtered.joinToString(" ").trim()
     }
 
@@ -1857,27 +1859,46 @@ class TikTokAccessibilityService : AccessibilityService() {
             ?: AccessibilityUtils.findNodeByDescription(node, "Profile")
             ?: AccessibilityUtils.findNodeByDescription(node, "头像")
         if (byId != null) return byId
-        // 启发式: 评论 item 最左边的可点击 ImageView
+
+        // 启发式: 评论 item 最左边的 ImageView (无论是否 clickable)
+        // 实测: TikTok 评论头像 isClickable=false, 必须用坐标手势 tap (tapNodeCenter)
         val itemRect = android.graphics.Rect()
         node.getBoundsInScreen(itemRect)
         val candidates = mutableListOf<AccessibilityNodeInfo>()
-        collectClickableImagesIn(node, candidates)
+        collectAllImagesIn(node, candidates)
         return candidates
             .filter { c ->
                 val r = android.graphics.Rect()
                 c.getBoundsInScreen(r)
                 val w = r.width()
                 val h = r.height()
-                // 在 item 最左 25% 区域 + 尺寸像头像 + 宽高接近
-                r.left < itemRect.left + itemRect.width() * 0.25
-                    && w in 60..250 && h in 60..250
-                    && kotlin.math.abs(w - h) < 20
+                // 在评论 item 最左侧 (绝对坐标 x < 200 且在 item 左 30% 内)
+                // 尺寸像头像 (60-200px 正方形)
+                r.left < 200
+                    && r.left < itemRect.left + itemRect.width() * 0.30
+                    && w in 60..200 && h in 60..200
+                    && kotlin.math.abs(w - h) < 30
             }
             .minByOrNull { c ->
                 val r = android.graphics.Rect()
                 c.getBoundsInScreen(r)
                 r.left
             }
+    }
+
+    /** 递归收集所有 ImageView 节点（不限 clickable） */
+    private fun collectAllImagesIn(
+        node: AccessibilityNodeInfo?,
+        out: MutableList<AccessibilityNodeInfo>
+    ) {
+        node ?: return
+        val cls = node.className?.toString() ?: ""
+        if (cls.contains("ImageView") || cls.contains("Image")) {
+            out.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            collectAllImagesIn(node.getChild(i), out)
+        }
     }
 
     private fun collectClickableImagesIn(
