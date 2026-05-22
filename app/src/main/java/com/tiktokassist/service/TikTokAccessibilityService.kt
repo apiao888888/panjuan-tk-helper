@@ -516,14 +516,13 @@ class TikTokAccessibilityService : AccessibilityService() {
     /**
      * 根据 targetSourceType 决定如何切换到下一个视频:
      *
-     * SEARCH_KEYWORD / USERNAME 模式 (主策略 = 上滑切下一条相关视频):
-     *   - 在搜索结果点击进入第一个视频后, TikTok 会进入"搜索结果视频流"
-     *     (顶部带"查找相关内容/搜索"框, 上滑可顺序切换下一条搜索相关视频)
-     *   - 评论 panel 已在调用方关闭(BACK 1次), 当前停留在视频播放页, 直接上滑切下一条
-     *   - 用 currentVideoSignature 跳过已处理的视频, 防止上滑卡在同一条
-     *   - 上滑连续 5 次都还在已处理视频 → BACK 回搜索结果列表, 滚动后选下一个卡片
+     * SEARCH_KEYWORD / USERNAME 模式 (用户期望的流程):
+     *   - 评论扫完, 关评论 panel, 然后 BACK 回搜索结果列表
+     *   - 在列表里按 (y, x) 顺序找下一个未处理的视频卡片, tap 进入
+     *   - 如果当前屏无新视频, 向下滚动列表
+     *   - 直到处理完所有可见视频 (滚 5 屏还没新视频, 任务终止)
      *
-     * CURRENT_VIDEO / VIDEO_URL 模式: 直接上滑切下一条 (主 Feed 行为)
+     * CURRENT_VIDEO / VIDEO_URL 模式: 上滑切下一条 (主 Feed 行为)
      */
     private suspend fun goToNextVideoInTask() {
         val isSearchMode = config.targetSourceType == TargetSourceType.SEARCH_KEYWORD
@@ -531,51 +530,17 @@ class TikTokAccessibilityService : AccessibilityService() {
 
         if (!isSearchMode) {
             // 主 Feed: 直接上滑
+            if (!ensureInTikTok()) return
             swipeUpInVideoArea()
             delay(3000)
             return
         }
 
-        // 搜索模式: 上滑切下一条搜索相关视频
-        repeat(5) { attempt ->
-            // 每次上滑前确保还在 TikTok (BACK 链可能把 TikTok 退掉了)
-            if (!ensureInTikTok()) {
-                addLog("❌ 无法回到 TikTok, 跳过本轮")
-                return
-            }
-            addLog("⬆ 上滑切下一条 (#${attempt + 1})")
-            swipeUpInVideoArea()
-            delay(2800)
-
-            // 上滑后再次确认在 TikTok 视频流
-            if (!isInTiktok()) {
-                addLog("⚠️ 上滑后离开了 TikTok, 拉回再试")
-                ensureInTikTok()
-                return
-            }
-
-            val root = rootInActiveWindow ?: return
-            val sig = currentVideoSignature(root)
-            // 关键: 当前若是判官TK助手主界面/Launcher等, 签名里会含 "判官TK助手" 等关键字, 跳过
-            if (looksLikeOwnApp(sig)) {
-                addLog("⚠️ 上滑落到非 TikTok 页面(签名: ${sig.take(40)}), 拉回 TikTok")
-                ensureInTikTok()
-                return
-            }
-            if (sig.isBlank()) {
-                addLog("ℹ️ 视频签名为空, 视为新视频")
-                return
-            }
-            if (!processedSearchVideoSignatures.contains(sig)) {
-                processedSearchVideoSignatures.add(sig)
-                addLog("✅ 进入新视频: ${sig.take(40)}")
-                return
-            }
-            addLog("⚠️ 仍是已处理视频, 再滑")
+        // 搜索模式: BACK 回搜索结果列表选下一个卡片
+        if (!ensureInTikTok()) {
+            addLog("❌ 无法回到 TikTok, 跳过本轮切视频")
+            return
         }
-
-        // 上滑 5 次还在已处理视频 → BACK 回搜索结果, 滚动后选下一个
-        addLog("⬅ 上滑无效, BACK 回搜索结果选下一个卡片")
         backToSearchResultsAndPickNext()
     }
 
@@ -624,49 +589,63 @@ class TikTokAccessibilityService : AccessibilityService() {
         return sig
     }
 
+    /**
+     * 当前在视频播放页 → BACK 回搜索结果列表 → 按顺序找下一个未处理的视频 tap 进入.
+     * 若 BACK 跑出了 TikTok (回到了判官TK助手主界面/launcher), 自动拉回 TikTok 重试.
+     */
     private suspend fun backToSearchResultsAndPickNext() {
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        delay(2500)
+        // BACK 最多 3 次直到看到搜索结果网格 (视频卡片), 防御 backstack 不一致
+        var foundList = false
+        for (backAttempt in 1..3) {
+            if (!isInTiktok()) {
+                addLog("⚠️ BACK 退出了 TikTok, 拉回")
+                if (!ensureInTikTok()) return
+                // 拉回 TikTok 后, 它可能直接到了主 Feed 而不是搜索结果. 需要重新搜索
+                addLog("ℹ️ 重新触发搜索流程")
+                navigatedToTarget = false
+                return
+            }
+            addLog("⬅ BACK (#$backAttempt) 回搜索结果列表")
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            delay(2000)
 
-        // 在搜索结果页选下一个未处理的视频卡片
-        var root = rootInActiveWindow ?: return
-        var candidates = mutableListOf<AccessibilityNodeInfo>()
-        for (waitAttempt in 1..3) {
-            candidates.clear()
+            val root = rootInActiveWindow ?: continue
+            val candidates = mutableListOf<AccessibilityNodeInfo>()
             collectVideoResultCandidates(root, candidates)
-            if (candidates.isNotEmpty()) break
-            delay(1000)
-            root = rootInActiveWindow ?: return
+            if (candidates.isNotEmpty()) {
+                addLog("✅ 搜索结果列表加载 (${candidates.size} 个卡片)")
+                foundList = true
+                break
+            }
         }
-        addLog("ℹ️ 搜索结果页找到 ${candidates.size} 个视频卡片 (已处理 ${processedSearchVideoSignatures.size})")
-        var next = candidates.sortedWith(
-            compareBy(
-                { node ->
-                    val r = android.graphics.Rect()
-                    node.getBoundsInScreen(r)
-                    r.top / 200
-                },
-                { node ->
-                    val r = android.graphics.Rect()
-                    node.getBoundsInScreen(r)
-                    r.left
-                }
-            )
-        ).firstOrNull { !processedSearchVideoSignatures.contains(nodeBoundsSignature(it)) }
 
-        var attempts = 0
-        while (next == null && attempts < 3) {
-            addLog("ℹ️ 当前屏无新视频, 向下滑结果列表 (#${attempts + 1})")
+        if (!foundList) {
+            addLog("⚠️ BACK 多次后未识别到搜索结果列表, 尝试拉回 TikTok 重新搜索")
+            navigatedToTarget = false
+            return
+        }
+
+        // 当前在搜索结果列表. 找下一个未处理的视频
+        var root = rootInActiveWindow ?: return
+        var next = findNextUnprocessedVideo(root)
+
+        var scrollAttempts = 0
+        while (next == null && scrollAttempts < 5) {
+            addLog("ℹ️ 当前屏无新视频, 向下滑结果列表 (#${scrollAttempts + 1})")
             scrollSearchResults()
             delay(1500)
+            if (!isInTiktok()) {
+                addLog("⚠️ 滚动列表时离开 TikTok, 终止")
+                return
+            }
             root = rootInActiveWindow ?: return
             next = findNextUnprocessedVideo(root)
-            attempts++
+            scrollAttempts++
         }
 
         if (next == null) {
-            addLog("⚠️ 找不到下一个搜索结果视频, 重置已处理列表")
-            processedSearchVideoSignatures.clear()
+            addLog("🏁 搜索结果列表已全部处理完毕, 任务结束")
+            // 标记任务完成 (不再继续, 由外层 runTask 处理)
             return
         }
 
@@ -674,7 +653,7 @@ class TikTokAccessibilityService : AccessibilityService() {
         processedSearchVideoSignatures.add(sig)
         val r = android.graphics.Rect()
         next.getBoundsInScreen(r)
-        addLog("▶ tap 下一个视频卡片 [${r.left},${r.top}]")
+        addLog("▶ tap 下一个视频卡片 [${r.left},${r.top}] (累计已处理 ${processedSearchVideoSignatures.size})")
         tapNodeCenter(next)
         delay(3500)
     }
@@ -1080,12 +1059,14 @@ class TikTokAccessibilityService : AccessibilityService() {
         val maxPerVideo = config.commentMaxPerVideo.coerceAtLeast(1)
         var matched = 0
         var scrollAttempts = 0
-        val maxScrollAttempts = 30  // 评论可能很多, 翻 30 次
+        val maxScrollAttempts = 60  // 评论可能很多, 翻 60 屏 (~400 条) 兜底
         var lastFirstCommentSig = ""  // 上次第一条评论的签名
-        var stagnantCount = 0  // 连续多少次滚动后内容没变
+        var stagnantCount = 0  // 连续多少次滚动后内容没变 (>=2 视为到底)
 
-        while (matched < maxPerVideo && scrollAttempts < maxScrollAttempts
-            && currentCoroutineContext().isActive) {
+        // 用户期望: 扫完当前视频的所有评论 (matched 达到上限只是不再触发私信, 不退出循环)
+        // 主退出条件: 评论滚到底 (stagnantCount >= 2)
+        // 安全网: maxScrollAttempts (60 屏评论, ≈ 360 条以上)
+        while (scrollAttempts < maxScrollAttempts && currentCoroutineContext().isActive) {
             checkPaused()
             val root = rootInActiveWindow ?: return matched
 
@@ -1105,8 +1086,6 @@ class TikTokAccessibilityService : AccessibilityService() {
 
             var actedAny = false
             for (item in commentItems) {
-                if (matched >= maxPerVideo) break
-
                 // 提取评论文本（不含用户名）
                 val text = extractCommentText(item)
                 val signature = commentSignature(item, text)
@@ -1121,6 +1100,13 @@ class TikTokAccessibilityService : AccessibilityService() {
                 // 防御: 命中文本如果是判官TK助手主界面的元素, 跳过
                 if (looksLikeOwnApp(text)) {
                     addLog("⚠️ 命中文本来自非 TikTok 页面, 跳过: ${text.take(30)}")
+                    processedCommentSignatures.add(signature)
+                    continue
+                }
+
+                // 达到单视频私信上限: 标记为已处理但不触发动作, 继续扫剩余评论
+                if (matched >= maxPerVideo) {
+                    addLog("⏸ 已达本视频上限($maxPerVideo), 跳过命中评论但继续扫: ${text.take(30)}")
                     processedCommentSignatures.add(signature)
                     continue
                 }
@@ -1188,8 +1174,7 @@ class TikTokAccessibilityService : AccessibilityService() {
                 delay(800 + Random.nextLong(400))
             }
 
-            if (matched >= maxPerVideo) break
-
+            // 不再因 matched 达到 maxPerVideo 而退出, 继续扫到底
             // 在滚动前记录这一屏的"内容指纹"(第一条评论文本) 用于检测是否到底
             val firstSig = commentItems.firstOrNull()?.let { extractCommentText(it) } ?: ""
 
