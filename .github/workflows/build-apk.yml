@@ -43,43 +43,64 @@ jobs:
           fi
           chmod +x ./gradlew
 
-      # 5. 编译 Debug APK
+      # 5. 编译 Debug APK（同时把完整日志保存到文件）
       - name: 编译 Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        id: build_debug
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace --info 2>&1 | tee build-log.txt
 
-      # 6. 编译 Release APK（未签名）
+      # 6. 把错误日志贴到 Step Summary（公开可见，不需登录）
+      - name: 显示编译错误（如果失败）
+        if: always()
+        run: |
+          echo "## 构建日志（最后 200 行）" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 200 build-log.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "无日志" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # 7. 上传完整构建日志（artifact 公开仓库不需登录即可下载）
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build-log.txt
+          retention-days: 30
+
+      # 8. 编译 Release APK（未签名）
       - name: 编译 Release APK
+        if: steps.build_debug.outcome == 'success'
         run: ./gradlew assembleRelease --stacktrace
         continue-on-error: true
 
-      # 7. 上传 Debug APK 作为构建产物
+      # 9. 上传 Debug APK 作为构建产物
       - name: 上传 Debug APK
+        if: steps.build_debug.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: 判官TK助手-debug
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      # 8. 上传 Release APK
+      # 10. 上传 Release APK
       - name: 上传 Release APK
+        if: steps.build_debug.outcome == 'success'
         uses: actions/upload-artifact@v4
-        if: success()
         with:
           name: 判官TK助手-release-unsigned
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
           if-no-files-found: ignore
 
-      # 9. 显示构建结果
-      - name: 构建结果汇总
+      # 11. 让 job 整体反映编译结果
+      - name: 检查编译结果
         if: always()
         run: |
-          echo "=========================================="
+          if [ "${{ steps.build_debug.outcome }}" != "success" ]; then
+            echo "❌ Debug APK 编译失败"
+            exit 1
+          fi
           echo "🎉 编译完成！"
-          echo "=========================================="
-          echo ""
-          echo "📦 生成的 APK 文件："
           find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \; || echo "未找到 APK"
-          echo ""
-          echo "👉 请到 Actions 页面下载 APK："
-          echo "   https://github.com/${{ github.repository }}/actions"
