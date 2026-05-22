@@ -50,10 +50,12 @@ class TaskConfigActivity : AppCompatActivity() {
 
     private fun setupModeSpinner() {
         val modeNames = TaskMode.allNames()
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, modeNames).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val adapter = ArrayAdapter(this, com.tiktokassist.R.layout.item_spinner_selected, modeNames).apply {
+            setDropDownViewResource(com.tiktokassist.R.layout.item_spinner_dropdown)
         }
         binding.spinnerMode.adapter = adapter
+        // 设置下拉框的背景为深色卡片色
+        binding.spinnerMode.setPopupBackgroundResource(com.tiktokassist.R.color.card_dark)
         binding.spinnerMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
                 selectedMode = TaskMode.fromIndex(pos + 1)
@@ -75,9 +77,11 @@ class TaskConfigActivity : AppCompatActivity() {
         )
         binding.layoutTargetUsername.visibility = if (needsTarget) View.VISIBLE else View.GONE
 
-        // 养号功能才显示养号设置
+        // 养号功能才显示养号设置（连同标题一起显示/隐藏）
         val isNurture = selectedMode == TaskMode.NURTURE_ACCOUNT
-        binding.cardNurtureSettings.visibility = if (isNurture) View.VISIBLE else View.GONE
+        val nurtureVis = if (isNurture) View.VISIBLE else View.GONE
+        binding.cardNurtureSettings.visibility = nurtureVis
+        binding.headerNurture.visibility = nurtureVis
     }
 
     // ==================== 加载配置 ====================

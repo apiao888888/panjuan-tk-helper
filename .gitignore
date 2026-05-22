@@ -20,6 +20,8 @@ build/
 # Keystore files
 *.jks
 *.keystore
+# 但项目用的固定 debug keystore 必须 commit（debug 签名公开无安全风险）
+!app/keystore/debug.keystore
 
 # Logs
 *.log

@@ -16,7 +16,15 @@
 
     <!-- 文字 -->
     <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#A0A0A0</color>
+    <color name="text_label">#EAEAEA</color>
+    <color name="text_secondary">#B8B8B8</color>
+    <color name="text_hint">#777777</color>
+    <color name="text_help">#888888</color>
+
+    <!-- 输入框 -->
+    <color name="input_bg">#2A2A2C</color>
+    <color name="input_border">#404045</color>
+    <color name="card_section">#16161A</color>
 
     <!-- 状态色 -->
     <color name="green">#34C759</color>

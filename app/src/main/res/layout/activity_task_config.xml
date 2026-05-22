@@ -1,609 +1,1022 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="@color/bg_dark">
 
+    <!-- 顶部标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/tiktok_pink"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="脚本设置"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="vertical"
+        android:fadeScrollbars="false">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- ==================== 区块：功能选择 ==================== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="20dp"
+                    android:background="@color/tiktok_pink"
+                    android:layout_marginEnd="8dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="功能选择"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_dark"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="当前模式"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <Spinner
+                        android:id="@+id/spinnerMode"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:background="@drawable/bg_spinner"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp" />
+
+                    <LinearLayout
+                        android:id="@+id/layoutTargetUsername"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="14dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="目标账号"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:layout_marginBottom="8dp" />
+
+                        <EditText
+                            android:id="@+id/etTargetUsername"
+                            android:layout_width="match_parent"
+                            android:layout_height="50dp"
+                            android:hint="输入 TikTok 用户名或视频链接"
+                            android:textColor="@color/text_primary"
+                            android:textColorHint="@color/text_hint"
+                            android:textSize="14sp"
+                            android:background="@drawable/bg_input"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
+                            android:inputType="text" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ==================== 区块：话术配置 ==================== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="20dp"
+                    android:background="@color/accent_blue"
+                    android:layout_marginEnd="8dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="话术配置"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_dark"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- 私信话术 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="14dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="私信话术"
+                                android:textColor="@color/text_label"
+                                android:textSize="15sp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="多条随机发送，反封号"
+                                android:textColor="@color/text_help"
+                                android:textSize="11sp"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnEditDmTemplates"
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:text="编辑 ▶"
+                            android:textSize="13sp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            app:cornerRadius="8dp"
+                            app:strokeColor="@color/accent_blue"
+                            android:textColor="@color/accent_blue" />
+                    </LinearLayout>
+
+                    <!-- 回复话术 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="6dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="评论 / 回复话术"
+                                android:textColor="@color/text_label"
+                                android:textSize="15sp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="多条随机发送"
+                                android:textColor="@color/text_help"
+                                android:textSize="11sp"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnEditCommentTemplates"
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:text="编辑 ▶"
+                            android:textSize="13sp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            app:cornerRadius="8dp"
+                            app:strokeColor="@color/accent_orange"
+                            android:textColor="@color/accent_orange" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ==================== 区块：超级话术 ==================== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="20dp"
+                    android:background="@color/accent_orange"
+                    android:layout_marginEnd="8dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="超级话术"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_dark"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- 开关 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="14dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="启用超级话术"
+                                android:textColor="@color/text_label"
+                                android:textSize="15sp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="同一用户发送多条随机话术"
+                                android:textColor="@color/text_help"
+                                android:textSize="11sp"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSuperDm"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:checked="true" />
+                    </LinearLayout>
+
+                    <!-- 每次发送条数 -->
+                    <LinearLayout
+                        android:id="@+id/layoutSuperDmCount"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="每次发送条数"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:layout_marginBottom="8dp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <EditText
+                                android:id="@+id/etSuperDmMin"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="48dp"
+                                android:text="1"
+                                android:inputType="number"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp"
+                                android:gravity="center"
+                                android:background="@drawable/bg_input" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="  至  "
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+
+                            <EditText
+                                android:id="@+id/etSuperDmMax"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="48dp"
+                                android:text="3"
+                                android:inputType="number"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp"
+                                android:gravity="center"
+                                android:background="@drawable/bg_input" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="  条 / 用户"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ==================== 区块：节奏控制 ==================== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="20dp"
+                    android:background="@color/accent_purple"
+                    android:layout_marginEnd="8dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="节奏控制"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_dark"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- 单次操作间隔 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="单次操作间隔"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="每次操作完一个目标后，等待多少秒再操作下一个"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="18dp">
+
+                        <EditText
+                            android:id="@+id/etActionIntervalMin"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="5"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  至  "
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+
+                        <EditText
+                            android:id="@+id/etActionIntervalMax"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="10"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  秒"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <!-- 分隔 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#2A2A2C"
+                        android:layout_marginBottom="14dp" />
+
+                    <!-- 批次执行数量 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="批次执行数量"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="每批连续执行多少个任务后休息"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="14dp">
+
+                        <EditText
+                            android:id="@+id/etBatchMin"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="20"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  至  "
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+
+                        <EditText
+                            android:id="@+id/etBatchMax"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="50"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  个"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <!-- 批次休息时长 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="批次休息时长"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="每批结束后休息多少秒再开始下一批"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="14dp">
+
+                        <EditText
+                            android:id="@+id/etBatchRestMin"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="300"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  至  "
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+
+                        <EditText
+                            android:id="@+id/etBatchRestMax"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="600"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  秒"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <!-- 分隔 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#2A2A2C"
+                        android:layout_marginBottom="14dp" />
+
+                    <!-- 循环次数 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="循环次数上限"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="完成多少批次后自动停止脚本"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="14dp">
+
+                        <EditText
+                            android:id="@+id/etCycleStop"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="10"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  次后停止"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <!-- 任务数量 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="任务数量上限"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="累计执行多少次任务后停止"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <EditText
+                            android:id="@+id/etTotalLimit"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="999"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  次后停止"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ==================== 区块：养号设置（仅功能1） ==================== -->
+            <LinearLayout
+                android:id="@+id/headerNurture"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="20dp"
+                    android:background="@color/green"
+                    android:layout_marginEnd="8dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="养号细则"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardNurtureSettings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:visibility="visible"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_dark"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- 功能开关 2×2 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="启用动作"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="6dp">
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchNurtureLike"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="自动点赞"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:checked="true" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchNurtureComment"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="自动评论"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp"
+                            android:checked="true" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="16dp">
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchNurtureFavorite"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="自动收藏"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchNurtureShare"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="自动分享"
+                            android:textColor="@color/text_label"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <!-- 分隔 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#2A2A2C"
+                        android:layout_marginBottom="14dp" />
+
+                    <!-- 概率行 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="动作概率（%）"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="10dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginEnd="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="点赞"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:layout_marginBottom="4dp" />
+                            <EditText
+                                android:id="@+id/etLikeRate"
+                                android:layout_width="match_parent"
+                                android:layout_height="44dp"
+                                android:text="60"
+                                android:inputType="number"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:gravity="center"
+                                android:background="@drawable/bg_input" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginStart="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="评论"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:layout_marginBottom="4dp" />
+                            <EditText
+                                android:id="@+id/etCommentRate"
+                                android:layout_width="match_parent"
+                                android:layout_height="44dp"
+                                android:text="20"
+                                android:inputType="number"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:gravity="center"
+                                android:background="@drawable/bg_input" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="16dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginEnd="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="收藏"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:layout_marginBottom="4dp" />
+                            <EditText
+                                android:id="@+id/etFavoriteRate"
+                                android:layout_width="match_parent"
+                                android:layout_height="44dp"
+                                android:text="10"
+                                android:inputType="number"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:gravity="center"
+                                android:background="@drawable/bg_input" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginStart="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="分享"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:layout_marginBottom="4dp" />
+                            <EditText
+                                android:id="@+id/etShareRate"
+                                android:layout_width="match_parent"
+                                android:layout_height="44dp"
+                                android:text="5"
+                                android:inputType="number"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:gravity="center"
+                                android:background="@drawable/bg_input" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- 分隔 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#2A2A2C"
+                        android:layout_marginBottom="14dp" />
+
+                    <!-- 观看时长 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="视频观看时长"
+                        android:textColor="@color/text_label"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="每个视频随机观看多少秒后再滑下一条"
+                        android:textColor="@color/text_help"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <EditText
+                            android:id="@+id/etWatchMin"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="5"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  至  "
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+
+                        <EditText
+                            android:id="@+id/etWatchMax"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="48dp"
+                            android:text="15"
+                            android:inputType="number"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:background="@drawable/bg_input" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  秒"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- 底部留白 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="80dp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 底部保存按钮（粘在底部）-->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="14dp"
+        android:background="#0A0A0A"
+        android:elevation="8dp">
 
-        <!-- ==================== 功能选择 ==================== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:text="功能选择"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:gravity="center"
-            android:background="@color/section_header"
-            android:layout_marginBottom="0dp" />
-
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="2dp"
-            app:cardCornerRadius="0dp"
-            app:cardBackgroundColor="@color/card_dark">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
-                    <TextView
-                        android:layout_width="80dp"
-                        android:layout_height="wrap_content"
-                        android:text="功能选择:"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                    <Spinner
-                        android:id="@+id/spinnerMode"
-                        android:layout_width="match_parent"
-                        android:layout_height="40dp"
-                        android:background="@drawable/bg_spinner"
-                        android:paddingStart="8dp"
-                        android:paddingEnd="8dp" />
-                </LinearLayout>
-
-                <!-- 目标账号（部分功能需要） -->
-                <LinearLayout
-                    android:id="@+id/layoutTargetUsername"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:visibility="gone">
-                    <TextView
-                        android:layout_width="80dp"
-                        android:layout_height="wrap_content"
-                        android:text="目标账号:"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etTargetUsername"
-                        android:layout_width="match_parent"
-                        android:layout_height="40dp"
-                        android:hint="输入TikTok用户名 或 视频链接"
-                        android:textColor="@color/text_primary"
-                        android:textColorHint="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:background="@drawable/bg_input"
-                        android:padding="8dp"
-                        android:inputType="text" />
-                </LinearLayout>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- ==================== 基本设置 ==================== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:text="基本设置"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:gravity="center"
-            android:background="@color/section_header"
-            android:layout_marginTop="10dp" />
-
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="2dp"
-            app:cardCornerRadius="0dp"
-            app:cardBackgroundColor="@color/card_dark">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp">
-
-                <!-- 私信话术入口 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="10dp">
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="私信话术:"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnEditDmTemplates"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="多条话术，随机发送 ▶"
-                        android:textSize="12sp"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        app:cornerRadius="4dp"
-                        app:strokeColor="@color/accent_blue"
-                        android:textColor="@color/accent_blue" />
-                </LinearLayout>
-
-                <!-- 回复话术入口 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="10dp">
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="回复话术:"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnEditCommentTemplates"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="多条话术，随机发送 ▶"
-                        android:textSize="12sp"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        app:cornerRadius="4dp"
-                        app:strokeColor="@color/accent_orange"
-                        android:textColor="@color/accent_orange" />
-                </LinearLayout>
-
-                <!-- 超级话术开关 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="启用超级话术"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchSuperDm"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:checked="true" />
-                </LinearLayout>
-
-                <!-- 超级话术每次发送条数 -->
-                <LinearLayout
-                    android:id="@+id/layoutSuperDmCount"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp"
-                    android:paddingStart="0dp">
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="每次发送条数（随机）"
-                        android:textColor="@color/accent_orange"
-                        android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etSuperDmMin"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="1"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView
-                        android:layout_width="24dp"
-                        android:layout_height="wrap_content"
-                        android:text=" 至"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:gravity="center" />
-                    <EditText
-                        android:id="@+id/etSuperDmMax"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="3"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=" 条"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                </LinearLayout>
-
-                <!-- 单次操作间隔 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="单次操作间隔"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etActionIntervalMin"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="5"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 至 " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etActionIntervalMax"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="10"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 秒" android:textColor="@color/text_secondary" android:textSize="13sp" />
-                </LinearLayout>
-
-                <!-- 批次设置 -->
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="批次控制（每执行 X 至 Y 个任务后休息）"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp"
-                    android:layout_marginBottom="4dp"
-                    android:layout_marginTop="4dp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="每执行 " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etBatchMin"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="20"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 至 " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etBatchMax"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="50"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 个任务，休息 " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etBatchRestMin"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="300"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 至 " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etBatchRestMax"
-                        android:layout_width="48dp"
-                        android:layout_height="36dp"
-                        android:text="600"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 秒" android:textColor="@color/text_secondary" android:textSize="13sp" />
-                </LinearLayout>
-
-                <!-- 循环次数和任务总数 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="循环 " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etCycleStop"
-                        android:layout_width="52dp"
-                        android:layout_height="36dp"
-                        android:text="10"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 次后停止脚本" android:textColor="@color/text_secondary" android:textSize="13sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="任务数量: " android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <EditText
-                        android:id="@+id/etTotalLimit"
-                        android:layout_width="72dp"
-                        android:layout_height="36dp"
-                        android:text="999"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 次后停止脚本运行" android:textColor="@color/text_secondary" android:textSize="13sp" />
-                </LinearLayout>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- ==================== 养号设置（仅功能1显示）==================== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:text="养号设置"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:gravity="center"
-            android:background="@color/section_header"
-            android:layout_marginTop="10dp" />
-
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardNurtureSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="2dp"
-            android:visibility="visible"
-            app:cardCornerRadius="0dp"
-            app:cardBackgroundColor="@color/card_dark">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp">
-
-                <!-- 功能开关行 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchNurtureLike"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="自动点赞"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:checked="true" />
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchNurtureComment"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="自动评论"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:checked="true" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="10dp">
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchNurtureFavorite"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="自动收藏"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchNurtureShare"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="自动分享"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <!-- 概率设置 2×2 排列 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="点赞概率: " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etLikeRate"
-                        android:layout_width="50dp"
-                        android:layout_height="34dp"
-                        android:text="60"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" %   " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="评论概率: " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etCommentRate"
-                        android:layout_width="50dp"
-                        android:layout_height="34dp"
-                        android:text="20"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" %" android:textColor="@color/text_secondary" android:textSize="12sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="收藏概率: " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etFavoriteRate"
-                        android:layout_width="50dp"
-                        android:layout_height="34dp"
-                        android:text="10"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" %   " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="分享概率: " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etShareRate"
-                        android:layout_width="50dp"
-                        android:layout_height="34dp"
-                        android:text="5"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" %" android:textColor="@color/text_secondary" android:textSize="12sp" />
-                </LinearLayout>
-
-                <!-- 观看时长 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="观看时间: " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etWatchMin"
-                        android:layout_width="48dp"
-                        android:layout_height="34dp"
-                        android:text="5"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 至 " android:textColor="@color/text_secondary" android:textSize="12sp" />
-                    <EditText
-                        android:id="@+id/etWatchMax"
-                        android:layout_width="48dp"
-                        android:layout_height="34dp"
-                        android:text="15"
-                        android:inputType="number"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:gravity="center"
-                        android:background="@drawable/bg_input"
-                        android:padding="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text=" 秒（单个视频）" android:textColor="@color/text_secondary" android:textSize="12sp" />
-                </LinearLayout>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- 保存按钮 -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
-            android:layout_height="50dp"
+            android:layout_height="52dp"
             android:text="保存配置"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="24dp"
-            app:cornerRadius="8dp"
+            app:cornerRadius="10dp"
             app:backgroundTint="@color/tiktok_pink" />
-
     </LinearLayout>
-</ScrollView>
+</LinearLayout>
